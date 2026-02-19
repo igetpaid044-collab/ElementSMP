@@ -1,0 +1,7 @@
+name: ElementSMP
+version: 1.0
+main: me.kaloni.ElementSMP
+api-version: '1.21'
+commands:
+  elements:
+    description: Open the element menu.
