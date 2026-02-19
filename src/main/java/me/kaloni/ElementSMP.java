@@ -1,4 +1,4 @@
-name: Build Plugin
+package me.kaloni;
 on:
   push:
     branches: [ 'main' ]
