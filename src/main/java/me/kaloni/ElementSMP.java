@@ -1,22 +1,17 @@
 package me.kaloni;
-on:
-  push:
-    branches: [ 'main' ]
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Java 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '21'
-          cache: 'maven'
-      - name: Build with Maven
-        run: mvn clean package
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ElementSMP
-          path: target/*.jar
+
+import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.Bukkit;
+
+public class ElementSMP extends JavaPlugin {
+    @Override
+    public void onEnable() {
+        getLogger().info("ElementSMP has been enabled!");
+        getCommand("elements").setExecutor(new PowerCommand());
+    }
+
+    @Override
+    public void onDisable() {
+        getLogger().info("ElementSMP has been disabled!");
+    }
+}
