@@ -4,11 +4,16 @@ main: me.kaloni.ElementSMP
 api-version: '1.21'
 commands:
   ability:
+    description: Use your elemental power.
   controls:
-  give-reroll:
+    description: Toggle between hotkeys and commands.
   elementsmp:
-    description: "Usage: /elementsmp set <player> <element>"
+    description: Admin command to set elements.
   trust:
-    description: "Trust a player to prevent ability damage."
+    description: Trust a player for your domain.
   untrust:
-    description: "Remove a player from your trust list."
+    description: Remove trust from a player.
+  give-reroll:
+    description: Give an elemental reroll star.
+  give-chaos:
+    description: Give a chaos reroll star.
