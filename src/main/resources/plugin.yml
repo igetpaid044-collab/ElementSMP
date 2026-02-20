@@ -1,7 +1,7 @@
 name: ElementSMP
 version: 1.0
 main: me.kaloni.ElementSMP
-api-version: '1.20'
+api-version: '1.21'
 commands:
   ability:
     description: Trigger your power.
@@ -16,7 +16,7 @@ commands:
   give-chaos:
     permission: elementsmp.admin
   elementsmp:
-    description: Main admin command. Usage /elementsmp <reload|player> [element]
+    description: Main admin command.
     permission: elementsmp.admin
 permissions:
   elementsmp.admin:
