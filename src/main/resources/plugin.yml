@@ -4,16 +4,20 @@ main: me.kaloni.ElementSMP
 api-version: '1.20'
 commands:
   ability:
-    description: Use your power.
+    description: Trigger your power.
   controls:
-    description: Toggle swap-hand triggers.
+    description: Toggle swap-hand hotkeys.
   trust:
-    description: Trust a teammate.
+    description: Trust a player.
   untrust:
-    description: Untrust a teammate.
+    description: Untrust a player.
   give-reroll:
-    permission: op
+    permission: elementsmp.admin
   give-chaos:
-    permission: op
+    permission: elementsmp.admin
   elementsmp:
-    permission: op
+    description: Main admin command. Usage /elementsmp <reload|player> [element]
+    permission: elementsmp.admin
+permissions:
+  elementsmp.admin:
+    default: op
