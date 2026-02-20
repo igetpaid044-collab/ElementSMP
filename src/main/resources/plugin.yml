@@ -1,12 +1,10 @@
-name: ElementSMP
-version: 1.0
-main: me.kaloni.ElementSMP
-api-version: '1.21'
 commands:
+  elementsmp:
+    description: Main admin command for ElementSMP.
+    permission: op
   ability:
-    description: Use your elemental power.
+    description: Use your element ability.
   controls:
-    description: Toggle between F-key and Commands.
-  elements:
-    description: Admin command for elements.
-    permission: elements.admin
+    description: Toggle F-key hotkeys.
+  give-reroll:
+    description: Get a reroll star.
