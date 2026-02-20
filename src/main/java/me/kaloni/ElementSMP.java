@@ -42,10 +42,10 @@ public class ElementSMP extends JavaPlugin implements Listener {
         ItemMeta meta = reroller.getItemMeta();
         if (meta != null) {
             meta.setDisplayName("§b§lElement Reroller");
-            meta.setLore(Arrays.asList("§7Right-click to gamble your powers!", "§8Cost: 4 Netherite, 4 Skulls, 1 Star"));
+            meta.setLore(Arrays.asList("§7Right-click to gamble your powers!"));
             reroller.setItemMeta(meta);
         }
-        NamespacedKey key = new NamespacedKey(this, "element_reroller");
+        NamespacedKey key = new NamespacedKey(this, "reroller");
         ShapedRecipe recipe = new ShapedRecipe(key, reroller);
         recipe.shape("NSN", "SWS", "NSN");
         recipe.setIngredient('N', Material.NETHERITE_INGOT);
@@ -60,33 +60,7 @@ public class ElementSMP extends JavaPlugin implements Listener {
         if (!playerElements.containsKey(p.getUniqueId())) {
             String randomElement = elements[new Random().nextInt(elements.length)];
             playerElements.put(p.getUniqueId(), randomElement);
-            p.sendTitle("§d§lELEMENT AWAKENED", "§fMaster of " + getIcon(randomElement) + " §l" + randomElement, 10, 80, 20);
-        }
-    }
-
-    @EventHandler
-    public void onReroll(PlayerInteractEvent event) {
-        Player p = event.getPlayer();
-        ItemStack item = event.getItem();
-        if (item != null && item.getType() == Material.NETHER_STAR && item.hasItemMeta() && item.getItemMeta().getDisplayName().equals("§b§lElement Reroller")) {
-            if (event.getAction() == Action.RIGHT_CLICK_AIR || event.getAction() == Action.RIGHT_CLICK_BLOCK) {
-                event.setCancelled(true);
-                item.setAmount(item.getAmount() - 1);
-                new BukkitRunnable() {
-                    int ticks = 0;
-                    public void run() {
-                        if (ticks >= 20) {
-                            String finalEl = elements[new Random().nextInt(elements.length)];
-                            playerElements.put(p.getUniqueId(), finalEl);
-                            p.sendTitle("§a§l" + finalEl.toUpperCase(), "§7New Power Unlocked!", 10, 40, 10);
-                            this.cancel();
-                            return;
-                        }
-                        p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_CHIME, 1, 2);
-                        ticks++;
-                    }
-                }.runTaskTimer(this, 0, 2);
-            }
+            p.sendTitle("§6§lELEMENT CHOSEN", "§fMaster of §e§l" + randomElement, 10, 80, 20);
         }
     }
 
@@ -116,22 +90,36 @@ class AbilityCommand implements CommandExecutor {
         }
 
         if (args.length > 0 && args[0].equals("1")) {
-            // This is the part that now correctly identifies the ability used
-            String abilityName = e.equals("Void") ? "Singularity" : "Elemental Strike";
+            // FIX: This now identifies exactly which ability is used
+            String abilityName = getAbilityName(e);
             p.sendMessage("§a§l" + icon + " Ability Used: §f" + abilityName);
             
             for (Entity entity : p.getNearbyEntities(10, 10, 10)) {
                 if (entity instanceof LivingEntity && !entity.equals(p)) {
+                    // VOID BALANCING: 6 hearts (12.0) for Void, 3 hearts (6.0) for others
                     double dmg = e.equals("Void") ? 12.0 : 6.0;
                     ((LivingEntity) entity).damage(dmg, p);
-                    if (e.equals("Void")) p.getWorld().spawnParticle(Particle.REVERSE_PORTAL, entity.getLocation(), 50);
+                    
+                    if (e.equals("Void")) {
+                        p.getWorld().spawnParticle(Particle.REVERSE_PORTAL, entity.getLocation(), 50);
+                    }
                     break;
                 }
             }
             ElementSMP.cooldowns.put(p.getUniqueId(), System.currentTimeMillis() + 15000);
-            p.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent("§a§l" + icon + " " + abilityName.toUpperCase() + " ACTIVATED!"));
+            p.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent("§a§l" + icon + " " + abilityName.toUpperCase() + " USED!"));
         }
         return true;
+    }
+
+    private String getAbilityName(String element) {
+        switch (element) {
+            case "Void": return "Singularity";
+            case "Fire": return "Inferno Strike";
+            case "Lightning": return "Voltage Bolt";
+            case "Water": return "Tidal Blast";
+            default: return "Elemental Pulse";
+        }
     }
 }
 
