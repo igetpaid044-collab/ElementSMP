@@ -1,10 +1,8 @@
-name: ElementSMP
-version: 1.0
-main: me.kaloni.ElementSMP
-api-version: '1.21'
 commands:
-  elements:
-    description: Open the element menu.
   ability:
-    description: Use your elemental powers!
-    usage: /ability <1|2>
+    description: Trigger your elemental power.
+    usage: /ability <1/2>
+  controls:
+    description: Toggle between F-key and Command mode.
+  elements:
+    description: View your current element info.
