@@ -9,134 +9,129 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.*;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
-import org.bukkit.event.block.Action;
-import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
-import org.bukkit.inventory.Inventory;
-import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.ShapedRecipe;
-import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.plugin.java.JavaPlugin;
-import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 import java.util.HashMap;
-import java.util.Random;
 import java.util.UUID;
-import java.util.Arrays;
 
 public class ElementSMP extends JavaPlugin implements Listener {
 
+    // --- Data Storage ---
     public static HashMap<UUID, String> playerElements = new HashMap<>();
     public static HashMap<UUID, Long> cooldowns = new HashMap<>();
-    private final String[] elements = {"Fire", "Water", "Earth", "Air", "Ice", "Nature", "Lightning", "Shadow", "Light", "Magma", "Void", "Wind"};
+    public static HashMap<UUID, Boolean> useHotkeys = new HashMap<>();
 
     @Override
     public void onEnable() {
         Bukkit.getPluginManager().registerEvents(this, this);
-        getCommand("elements").setExecutor(new PowerCommand());
-        getCommand("ability").setExecutor(new AbilityCommand());
-        registerRerollRecipe();
-    }
-
-    private void registerRerollRecipe() {
-        ItemStack reroller = new ItemStack(Material.NETHER_STAR);
-        ItemMeta meta = reroller.getItemMeta();
-        if (meta != null) {
-            meta.setDisplayName("§b§lElement Reroller");
-            meta.setLore(Arrays.asList("§7Right-click to gamble your powers!"));
-            reroller.setItemMeta(meta);
-        }
-        NamespacedKey key = new NamespacedKey(this, "reroller");
-        ShapedRecipe recipe = new ShapedRecipe(key, reroller);
-        recipe.shape("NSN", "SWS", "NSN");
-        recipe.setIngredient('N', Material.NETHERITE_INGOT);
-        recipe.setIngredient('S', Material.SKELETON_SKULL);
-        recipe.setIngredient('W', Material.NETHER_STAR);
-        Bukkit.addRecipe(recipe);
+        getCommand("ability").setExecutor(new AbilityLogic());
+        getCommand("controls").setExecutor(new ControlToggle());
+        getCommand("elements").setExecutor(new PowerMenu());
+        
+        // --- PASSIVE MANAGER (Runs every 5 seconds) ---
+        Bukkit.getScheduler().runTaskTimer(this, () -> {
+            for (Player p : Bukkit.getOnlinePlayers()) {
+                applyPassives(p);
+            }
+        }, 0L, 100L);
     }
 
     @EventHandler
     public void onJoin(PlayerJoinEvent event) {
         Player p = event.getPlayer();
-        if (!playerElements.containsKey(p.getUniqueId())) {
-            String randomElement = elements[new Random().nextInt(elements.length)];
-            playerElements.put(p.getUniqueId(), randomElement);
-            p.sendTitle("§6§lELEMENT CHOSEN", "§fMaster of §e§l" + randomElement, 10, 80, 20);
+        playerElements.putIfAbsent(p.getUniqueId(), "Void");
+        useHotkeys.putIfAbsent(p.getUniqueId(), false);
+    }
+
+    // --- HOTKEY HANDLER (Offhand/Shift+F) ---
+    @EventHandler
+    public void onOffhandSwap(PlayerSwapHandItemsEvent event) {
+        Player p = event.getPlayer();
+        if (useHotkeys.getOrDefault(p.getUniqueId(), false)) {
+            event.setCancelled(true);
+            if (p.isSneaking()) executeAbility(p, 2);
+            else executeAbility(p, 1);
         }
     }
 
-    public static String getIcon(String element) {
-        switch (element) {
-            case "Fire": return "§c[!]"; case "Water": return "§b[≈]"; case "Earth": return "§2[#]";
-            case "Air": return "§f[≡]"; case "Ice": return "§3[*]"; case "Nature": return "§a[v]";
-            case "Lightning": return "§e[⚡]"; case "Shadow": return "§8[o]"; case "Light": return "§e[+]";
-            case "Magma": return "§6[x]"; case "Void": return "§5[?] "; case "Wind": return "§7[~]";
-            default: return "§f[*]";
-        }
-    }
-}
-
-class AbilityCommand implements CommandExecutor {
-    @Override
-    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        if (!(sender instanceof Player)) return true;
-        Player p = (Player) sender;
-        String e = ElementSMP.playerElements.getOrDefault(p.getUniqueId(), "None");
-        String icon = ElementSMP.getIcon(e);
+    // --- COOLDOWN & ABILITY MANAGER ---
+    public static void executeAbility(Player p, int num) {
+        String e = playerElements.getOrDefault(p.getUniqueId(), "Void");
+        String icon = getIcon(e);
         
-        long timeLeft = ElementSMP.cooldowns.getOrDefault(p.getUniqueId(), 0L) - System.currentTimeMillis();
+        long timeLeft = cooldowns.getOrDefault(p.getUniqueId(), 0L) - System.currentTimeMillis();
         if (timeLeft > 0) {
             p.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent("§c§l" + icon + " COOLDOWN: " + (timeLeft / 1000) + "s"));
-            return true;
+            return;
         }
 
-        if (args.length > 0 && args[0].equals("1")) {
-            // FIX: This now identifies exactly which ability is used
-            String abilityName = getAbilityName(e);
-            p.sendMessage("§a§l" + icon + " Ability Used: §f" + abilityName);
-            
-            for (Entity entity : p.getNearbyEntities(10, 10, 10)) {
-                if (entity instanceof LivingEntity && !entity.equals(p)) {
-                    // VOID BALANCING: 6 hearts (12.0) for Void, 3 hearts (6.0) for others
-                    double dmg = e.equals("Void") ? 12.0 : 6.0;
-                    ((LivingEntity) entity).damage(dmg, p);
-                    
-                    if (e.equals("Void")) {
-                        p.getWorld().spawnParticle(Particle.REVERSE_PORTAL, entity.getLocation(), 50);
-                    }
-                    break;
-                }
+        String abilityName = (num == 1) ? getAbilityName(e, 1) : getAbilityName(e, 2);
+        double damage = (e.equals("Void") && num == 1) ? 12.0 : 6.0;
+
+        p.sendMessage("§a§l" + icon + " Ability Used: §f" + abilityName);
+        
+        for (Entity target : p.getNearbyEntities(8, 8, 8)) {
+            if (target instanceof LivingEntity && !target.equals(p)) {
+                ((LivingEntity) target).damage(damage, p);
+                spawnAbilityEffects(target.getLocation(), e);
+                break;
             }
-            ElementSMP.cooldowns.put(p.getUniqueId(), System.currentTimeMillis() + 15000);
-            p.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent("§a§l" + icon + " " + abilityName.toUpperCase() + " USED!"));
         }
-        return true;
+
+        p.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent("§a§l" + icon + " " + abilityName.toUpperCase()));
+        cooldowns.put(p.getUniqueId(), System.currentTimeMillis() + 15000);
     }
 
-    private String getAbilityName(String element) {
-        switch (element) {
-            case "Void": return "Singularity";
-            case "Fire": return "Inferno Strike";
-            case "Lightning": return "Voltage Bolt";
-            case "Water": return "Tidal Blast";
-            default: return "Elemental Pulse";
+    // --- PARTICLES & EFFECTS ---
+    private static void spawnAbilityEffects(Location loc, String element) {
+        if (element.equals("Void")) {
+            loc.getWorld().spawnParticle(Particle.REVERSE_PORTAL, loc, 100, 0.5, 1, 0.5, 0.1);
+            loc.getWorld().playSound(loc, Sound.ENTITY_WARDEN_SONIC_BOOM, 1, 1);
+        } else {
+            loc.getWorld().spawnParticle(Particle.EXPLOSION_LARGE, loc, 1);
+            loc.getWorld().playSound(loc, Sound.ENTITY_GENERIC_EXPLODE, 1, 1);
         }
+    }
+
+    // --- PASSIVES SYSTEM ---
+    private void applyPassives(Player p) {
+        String e = playerElements.get(p.getUniqueId());
+        if (e == null) return;
+
+        switch (e) {
+            case "Void":
+                p.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 120, 0));
+                break;
+            case "Fire":
+                p.addPotionEffect(new PotionEffect(PotionEffectType.FIRE_RESISTANCE, 120, 0));
+                break;
+        }
+    }
+
+    public static String getIcon(String e) { return e.equals("Void") ? "§5[?]" : "§f[*]"; }
+    private static String getAbilityName(String e, int n) { 
+        if (e.equals("Void")) return n == 1 ? "Singularity" : "Void Rift";
+        return n == 1 ? "Strike" : "Dash";
     }
 }
 
-class PowerCommand implements CommandExecutor {
+// --- COMMAND CLASSES ---
+class AbilityLogic implements CommandExecutor {
     @Override
-    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        if (!(sender instanceof Player)) return true;
-        Player player = (Player) sender;
-        Inventory inv = Bukkit.createInventory(null, 18, "§8Element Info");
-        String current = ElementSMP.playerElements.getOrDefault(player.getUniqueId(), "None");
-        ItemStack info = new ItemStack(Material.PAPER);
-        ItemMeta meta = info.getItemMeta();
-        meta.setDisplayName("§eCurrent: §l" + current);
-        meta.setLore(Arrays.asList("§7Icon: " + ElementSMP.getIcon(current), "§7Use /ability 1 to attack."));
-        info.setItemMeta(meta);
-        inv.setItem(4, info);
-        player.openInventory(inv);
+    public boolean onCommand(CommandSender s, Command c, String l, String[] a) {
+        if (!(s instanceof Player)) return true;
+        int num = (a.length > 0 && a[0].equals("2")) ? 2 : 1;
+        ElementSMP.executeAbility((Player) s, num);
         return true;
     }
 }
+
+class ControlToggle implements CommandExecutor {
+    @Override
+    public boolean onCommand(CommandSender s, Command c, String l, String[] a) {
+        if (!(s instanceof Player)) return true;
+        Player p = (Player) s;
+        boolean cur = Element
