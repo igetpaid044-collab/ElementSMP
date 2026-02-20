@@ -18,8 +18,8 @@ public class ElementSMP extends JavaPlugin implements Listener {
     @Override
     public void onEnable() {
         Bukkit.getPluginManager().registerEvents(this, this);
-        getCommand("elements").setExecutor(new PowerCommand());
-        getCommand("ability").setExecutor(new AbilityCommand());
+        if (getCommand("elements") != null) getCommand("elements").setExecutor(new PowerCommand());
+        if (getCommand("ability") != null) getCommand("ability").setExecutor(new AbilityCommand());
     }
 
     @EventHandler
@@ -28,7 +28,7 @@ public class ElementSMP extends JavaPlugin implements Listener {
         if (!playerElements.containsKey(player.getUniqueId())) {
             String randomElement = elements[new Random().nextInt(elements.length)];
             playerElements.put(player.getUniqueId(), randomElement);
-            player.sendMessage("§6§lELEMENT §7> Your assigned element is: §e" + randomElement);
+            player.sendMessage("§6§lELEMENT §7> You have been assigned: §e" + randomElement);
         }
     }
 }
