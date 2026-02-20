@@ -2,16 +2,18 @@ name: ElementSMP
 version: 1.0
 main: me.kaloni.ElementSMP
 api-version: "1.21"
+description: An advanced 11-element system with passives, abilities, and domains.
 commands:
   elemental:
-    description: Main command for elements and help.
+    description: Master command for elements.
     usage: /elemental <set/help>
   ability:
-    description: Manually trigger an elemental ability.
+    description: Trigger active ability.
     usage: /ability <1/2>
   controls:
-    description: Toggle the sneak+swap hotkeys.
+    description: Toggle swap-hand hotkeys.
     usage: /controls
-  trust:
-    description: Trust a player to immune them from your effects.
-    usage: /trust <player>
+permissions:
+  elementsmp.admin:
+    description: Manage player elements.
+    default: op
