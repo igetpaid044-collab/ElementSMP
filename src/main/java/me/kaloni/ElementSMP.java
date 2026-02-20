@@ -67,16 +67,18 @@ public class ElementSMP extends JavaPlugin implements Listener {
         HashMap<UUID, Long> cdMap = (num == 1) ? cd1 : cd2;
 
         if (cdMap.getOrDefault(id, 0L) > System.currentTimeMillis()) {
-            p.sendMessage("§cWait " + (cdMap.get(id) - System.currentTimeMillis())/1000 + "s");
+            p.sendMessage(ChatColor.RED + "Wait " + (cdMap.get(id) - System.currentTimeMillis())/1000 + "s");
             return;
         }
 
-        boolean success = switch (el) {
-            case "void" -> (num == 1) ? performVoidWarp(p) : performInfiniteVoid(p);
-            case "ice" -> (num == 2) ? performAbsoluteZero(p) : false;
-            case "nature" -> (num == 1) ? performNatureGrapple(p) : false;
-            default -> false;
-        };
+        boolean success = false;
+        if (num == 1) {
+            if (el.equals("void")) success = performVoidWarp(p);
+            else if (el.equals("nature")) success = performNatureGrapple(p);
+        } else {
+            if (el.equals("void")) success = performInfiniteVoid(p);
+            else if (el.equals("ice")) success = performAbsoluteZero(p);
+        }
 
         if (success) {
             long cooldown = getInstance().getConfig().getLong("cooldowns.a" + num, (num == 1 ? 12 : 60)) * 1000;
@@ -86,7 +88,7 @@ public class ElementSMP extends JavaPlugin implements Listener {
 
     private static boolean performInfiniteVoid(Player p) {
         int radius = getInstance().getConfig().getInt("abilities.void.domain-radius", 25);
-        p.sendMessage("§5§lDomain Expansion: §0§lINFINITE VOID");
+        p.sendMessage(ChatColor.DARK_PURPLE + "" + ChatColor.BOLD + "Domain Expansion: " + ChatColor.BLACK + "" + ChatColor.BOLD + "INFINITE VOID");
         Location center = p.getLocation();
         
         for (int x = -radius; x <= radius; x++) {
@@ -127,6 +129,7 @@ public class ElementSMP extends JavaPlugin implements Listener {
         int r = getInstance().getConfig().getInt("abilities.ice.freeze-radius", 10);
         for (Entity e : p.getNearbyEntities(r, 5, r)) {
             if (e instanceof Player target && !isTrusted(p, target) && target != p) {
+                // FIXED POTION NAMES
                 target.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 100, 255));
                 target.addPotionEffect(new PotionEffect(PotionEffectType.JUMP_BOOST, 100, 200));
             }
@@ -163,7 +166,7 @@ public class ElementSMP extends JavaPlugin implements Listener {
         if (e.getItem() != null && e.getItem().getType() == Material.NETHER_STAR) {
             e.setCancelled(true);
             playerElements.put(e.getPlayer().getUniqueId(), elementList.get(new Random().nextInt(elementList.size())));
-            e.getPlayer().sendMessage("§aElement Rerolled!");
+            e.getPlayer().sendMessage(ChatColor.GREEN + "Element Rerolled!");
             e.getItem().setAmount(e.getItem().getAmount() - 1);
         }
     }
@@ -182,7 +185,7 @@ class AdminElementHandler implements CommandExecutor {
         if (!s.isOp()) return true;
         if (args.length > 0 && args[0].equalsIgnoreCase("reload")) {
             ElementSMP.getInstance().reloadConfig();
-            s.sendMessage("§a[ElementSMP] Config reloaded!");
+            s.sendMessage("§aConfig reloaded!");
             return true;
         }
         if (args.length >= 2) {
@@ -192,6 +195,7 @@ class AdminElementHandler implements CommandExecutor {
         return true;
     }
 }
+
 class AbilityHandler implements CommandExecutor { public boolean onCommand(CommandSender s, Command c, String l, String[] a) { if (s instanceof Player p) ElementSMP.triggerAbility(p, (a.length > 0 && a[0].equals("2")) ? 2 : 1); return true; } }
 class ControlToggle implements CommandExecutor { public boolean onCommand(CommandSender s, Command c, String l, String[] a) { if (s instanceof Player p) { ElementSMP.useHotkeys.put(p.getUniqueId(), !ElementSMP.useHotkeys.getOrDefault(p.getUniqueId(), false)); p.sendMessage("§bHotkeys Toggled."); } return true; } }
 class TrustCommand implements CommandExecutor { @Override public boolean onCommand(CommandSender s, Command c, String l, String[] a) { if (!(s instanceof Player p) || a.length == 0) return false; Player target = Bukkit.getPlayer(a[0]); if (target == null) return false; Set<UUID> trusted = ElementSMP.trustedPlayers.computeIfAbsent(p.getUniqueId(), k -> new HashSet<>()); if (c.getName().equalsIgnoreCase("trust")) { trusted.add(target.getUniqueId()); p.sendMessage("§aTrusted " + target.getName()); } else { trusted.remove(target.getUniqueId()); p.sendMessage("§cUntrusted " + target.getName()); } return true; } }
