@@ -16,13 +16,14 @@ public class ElementSMP extends JavaPlugin implements Listener {
     public static HashMap<UUID, String> playerElements = new HashMap<>();
     public static HashMap<UUID, Long> cooldowns = new HashMap<>();
     public static HashMap<UUID, Boolean> useHotkeys = new HashMap<>();
+    private final String[] elements = {"Fire", "Water", "Earth", "Air", "Ice", "Nature", "Lightning", "Shadow", "Light", "Magma", "Void", "Wind"};
 
     @Override
     public void onEnable() {
         Bukkit.getPluginManager().registerEvents(this, this);
         getCommand("ability").setExecutor(new AbilityHandler());
         getCommand("controls").setExecutor(new ControlToggle());
-        getCommand("elements").setExecutor(new InfoMenu());
+        getCommand("elements").setExecutor(new AdminCommands(this));
 
         // PASSIVE TICKER (Every 5 seconds)
         Bukkit.getScheduler().runTaskTimer(this, () -> {
@@ -33,7 +34,7 @@ public class ElementSMP extends JavaPlugin implements Listener {
     @EventHandler
     public void onJoin(PlayerJoinEvent event) {
         Player p = event.getPlayer();
-        playerElements.putIfAbsent(p.getUniqueId(), "Void");
+        playerElements.putIfAbsent(p.getUniqueId(), elements[new Random().nextInt(elements.length)]);
         useHotkeys.putIfAbsent(p.getUniqueId(), false);
     }
 
@@ -48,17 +49,18 @@ public class ElementSMP extends JavaPlugin implements Listener {
 
     public static void triggerAbility(Player p, int num) {
         String e = playerElements.getOrDefault(p.getUniqueId(), "Void");
+        String icon = getIcon(e);
         long timeLeft = cooldowns.getOrDefault(p.getUniqueId(), 0L) - System.currentTimeMillis();
 
         if (timeLeft > 0) {
-            p.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent("§c§lCOOLDOWN: " + (timeLeft / 1000) + "s"));
+            p.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent("§c§l" + icon + " COOLDOWN: " + (timeLeft / 1000) + "s"));
             return;
         }
 
         String name = (num == 1) ? getAbility1(e) : getAbility2(e);
         double dmg = (e.equals("Void") && num == 1) ? 12.0 : 6.0;
 
-        p.sendMessage("§a§l" + getIcon(e) + " Used: §f" + name);
+        p.sendMessage("§a§l" + icon + " Used: §f" + name);
         
         for (Entity target : p.getNearbyEntities(7, 7, 7)) {
             if (target instanceof LivingEntity && !target.equals(p)) {
@@ -68,6 +70,7 @@ public class ElementSMP extends JavaPlugin implements Listener {
             }
         }
 
+        p.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent("§a§l" + icon + " " + name.toUpperCase() + " ACTIVATED"));
         cooldowns.put(p.getUniqueId(), System.currentTimeMillis() + 15000);
     }
 
@@ -84,36 +87,43 @@ public class ElementSMP extends JavaPlugin implements Listener {
     private void applyPassives(Player p) {
         String e = playerElements.get(p.getUniqueId());
         if (e == null) return;
-        if (e.equals("Void")) p.addPotionEffect(new PotionEffect(PotionEffectType.DAMAGE_RESISTANCE, 120, 0));
+        // FIX: Changed DAMAGE_RESISTANCE to RESISTANCE for modern compatibility
+        if (e.equals("Void")) p.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 120, 0));
         if (e.equals("Fire")) p.addPotionEffect(new PotionEffect(PotionEffectType.FIRE_RESISTANCE, 120, 0));
     }
 
-    public static String getIcon(String e) { return e.equals("Void") ? "🌌" : "✨"; }
-    private static String getAbility1(String e) { return e.equals("Void") ? "Singularity" : "Pulse"; }
+    public static String getIcon(String e) {
+        switch (e) {
+            case "Void": return "§5[?]§r";
+            case "Fire": return "§c[!]§r";
+            case "Lightning": return "§e[⚡]§r";
+            default: return "§f[*]§r";
+        }
+    }
+    
+    private static String getAbility1(String e) { return e.equals("Void") ? "Singularity" : "Pulse Strike"; }
     private static String getAbility2(String e) { return e.equals("Void") ? "Abyssal Rift" : "Burst"; }
+    public String[] getElementList() { return elements; }
 }
 
-class AbilityHandler implements CommandExecutor {
-    public boolean onCommand(CommandSender s, Command c, String l, String[] a) {
-        if (s instanceof Player) ElementSMP.triggerAbility((Player) s, (a.length > 0 && a[0].equals("2")) ? 2 : 1);
-        return true;
-    }
-}
+class AdminCommands implements CommandExecutor {
+    private final ElementSMP plugin;
+    public AdminCommands(ElementSMP plugin) { this.plugin = plugin; }
 
-class ControlToggle implements CommandExecutor {
+    @Override
     public boolean onCommand(CommandSender s, Command c, String l, String[] a) {
-        if (!(s instanceof Player)) return true;
-        UUID id = ((Player) s).getUniqueId();
-        boolean cur = ElementSMP.useHotkeys.getOrDefault(id, false);
-        ElementSMP.useHotkeys.put(id, !cur);
-        s.sendMessage("§6§lControls: " + (!cur ? "§bHOTKEYS (F)" : "§eCOMMANDS"));
-        return true;
-    }
-}
+        if (!s.isOp()) {
+            s.sendMessage("§cOnly operators can use admin element commands!");
+            return true;
+        }
 
-class InfoMenu implements CommandExecutor {
-    public boolean onCommand(CommandSender s, Command c, String l, String[] a) {
-        if (s instanceof Player) s.sendMessage("§eElement: §f" + ElementSMP.playerElements.get(((Player) s).getUniqueId()));
-        return true;
-    }
-}
+        if (a.length >= 2 && a[0].equalsIgnoreCase("set")) {
+            Player target = Bukkit.getPlayer(a[1]);
+            if (target == null) { s.sendMessage("§cPlayer not found."); return true; }
+            String newEl = (a.length > 2) ? a[2] : "Void";
+            ElementSMP.playerElements.put(target.getUniqueId(), newEl);
+            s.sendMessage("§aSet " + target.getName() + " to " + newEl);
+            return true;
+        }
+        
+        if (a.length >= 2 &&
