@@ -2,90 +2,80 @@ package me.kaloni;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
+import org.bukkit.Sound;
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandExecutor;
+import org.bukkit.command.CommandSender;
+import org.bukkit.entity.Fireball;
 import org.bukkit.entity.Player;
-import org.bukkit.event.EventHandler;
+import org.bukkit.entity.Snowball;
 import org.bukkit.event.Listener;
-import org.bukkit.event.entity.EntityDamageEvent;
-import org.bukkit.event.player.PlayerJoinEvent;
-import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
-
-import java.util.HashMap;
-import java.util.Random;
-import java.util.UUID;
+import org.bukkit.util.Vector;
 
 public class ElementSMP extends JavaPlugin implements Listener {
-
-    // This stores which player has which element
-    public static HashMap<UUID, String> playerElements = new HashMap<>();
-
-    private final String[] elements = {
-        "Fire", "Water", "Earth", "Air", 
-        "Ice", "Nature", "Lightning", "Shadow", 
-        "Light", "Magma", "Void", "Wind"
-    };
 
     @Override
     public void onEnable() {
         Bukkit.getPluginManager().registerEvents(this, this);
         getCommand("elements").setExecutor(new PowerCommand());
-    }
-
-    @EventHandler
-    public void onJoin(PlayerJoinEvent event) {
-        Player player = event.getPlayer();
-        // Only assign if they don't have one yet
-        if (!playerElements.containsKey(player.getUniqueId())) {
-            String randomElement = elements[new Random().nextInt(elements.length)];
-            playerElements.put(player.getUniqueId(), randomElement);
-            
-            player.sendMessage("§6§lELEMENT §7> You are now a master of: §e" + randomElement);
-        }
-    }
-
-    // --- ELEMENT ABILITIES ---
-
-    @EventHandler
-    public void onDamage(EntityDamageEvent event) {
-        if (event.getEntity() instanceof Player) {
-            Player player = (Player) event.getEntity();
-            String element = playerElements.get(player.getUniqueId());
-
-            if (element == null) return;
-
-            // FIRE/MAGMA: Immune to Fire and Lava damage
-            if ((element.equals("Fire") || element.equals("Magma")) && 
-                (event.getCause() == EntityDamageEvent.DamageCause.FIRE || 
-                 event.getCause() == EntityDamageEvent.DamageCause.LAVA)) {
-                event.setCancelled(true);
-            }
-            
-            // VOID: No Fall Damage
-            if (element.equals("Void") && event.getCause() == EntityDamageEvent.DamageCause.FALL) {
-                event.setCancelled(true);
-            }
-        }
-    }
-
-    @EventHandler
-    public void onMove(PlayerMoveEvent event) {
-        Player player = event.getPlayer();
-        String element = playerElements.get(player.getUniqueId());
-
-        if (element == null) return;
-
-        // WIND: Permanent Speed 2
-        if (element.equals("Wind")) {
-            player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 40, 1, false, false));
-        }
-
-        // WATER: Permanent Water Breathing
-        if (element.equals("Water")) {
-            player.addPotionEffect(new PotionEffect(PotionEffectType.WATER_BREATHING, 40, 0, false, false));
-        }
         
-        // ICE: Walk on Water (Frost Walker effect)
-        if (element.equals("Ice") && player.getLocation().getBlock().getType() == Material.WATER) {
-             player.addPotionEffect(new PotionEffect(Potion
+        // Register the Ability Command
+        AbilityCommand abilityCmd = new AbilityCommand();
+        getCommand("ability").setExecutor(abilityCmd);
+    }
+}
+
+class AbilityCommand implements CommandExecutor {
+    @Override
+    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (!(sender instanceof Player)) return true;
+        Player player = (Player) sender;
+        String element = ElementSMP.playerElements.getOrDefault(player.getUniqueId(), "None");
+
+        if (args.length == 0) {
+            player.sendMessage("§cUsage: /ability <1|2>");
+            return true;
+        }
+
+        if (args[0].equals("1")) {
+            handleAbilityOne(player, element);
+        } else if (args[0].equals("2")) {
+            handleAbilityTwo(player, element);
+        }
+        return true;
+    }
+
+    private void handleAbilityOne(Player p, String e) {
+        switch (e) {
+            case "Fire": p.launchProjectile(Fireball.class); break;
+            case "Water": p.addPotionEffect(new PotionEffect(PotionEffectType.DOLPHINS_GRACE, 200, 1)); break;
+            case "Earth": p.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 200, 2)); break;
+            case "Air": p.setVelocity(new Vector(0, 1.5, 0)); break;
+            case "Ice": p.launchProjectile(Snowball.class); break;
+            case "Nature": p.addPotionEffect(new PotionEffect(PotionEffectType.REGENERATION, 100, 1)); break;
+            case "Lightning": p.getWorld().strikeLightning(p.getTargetBlock(null, 10).getLocation()); break;
+            case "Shadow": p.addPotionEffect(new PotionEffect(PotionEffectType.INVISIBILITY, 200, 0)); break;
+            case "Light": p.addPotionEffect(new PotionEffect(PotionEffectType.NIGHT_VISION, 600, 0)); break;
+            case "Magma": p.setFireTicks(100); p.addPotionEffect(new PotionEffect(PotionEffectType.STRENGTH, 200, 1)); break;
+            case "Void": p.addPotionEffect(new PotionEffect(PotionEffectType.LEVITATION, 40, 1)); break;
+            case "Wind": p.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 200, 3)); break;
+            default: p.sendMessage("§cYou don't have an element!");
+        }
+    }
+
+    private void handleAbilityTwo(Player p, String e) {
+        switch (e) {
+            case "Fire": p.getWorld().setInfiniburn(p.getLocation().getChunk().getChunkKey(), true); break;
+            case "Water": p.setRemainingAir(p.getMaximumAir()); break;
+            case "Earth": p.getInventory().addItem(new org.bukkit.inventory.ItemStack(Material.COBBLESTONE, 16)); break;
+            case "Air": p.setVelocity(p.getLocation().getDirection().multiply(2)); break;
+            case "Ice": p.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 100, 10)); break;
+            case "Nature": p.getWorld().generateTree(p.getLocation(), org.bukkit.TreeType.TREE); break;
+            case "Lightning": p.addPotionEffect(new PotionEffect(PotionEffectType.HASTE, 600, 2)); break;
+            case "Shadow": p.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 60, 0)); break;
+            case "Light": p.setHealth(p.getMaxHealth()); break;
+            case "Magma": p.getWorld().spawn(p.getLocation(), org.bukkit.entity.MagmaCube.class); break;
+            case "Void": p.teleport(p.
