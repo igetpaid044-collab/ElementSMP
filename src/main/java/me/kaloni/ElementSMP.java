@@ -4,7 +4,6 @@ import net.md_5.bungee.api.ChatMessageType;
 import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.*;
 import org.bukkit.command.*;
-import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.*;
 import org.bukkit.event.*;
 import org.bukkit.event.player.*;
@@ -23,7 +22,6 @@ public class ElementSMP extends JavaPlugin implements Listener {
     public static ElementSMP getInstance() { return instance; }
 
     public static HashMap<UUID, String> playerElements = new HashMap<>();
-    public static HashMap<UUID, String> secondaryElements = new HashMap<>();
     public static HashMap<UUID, Boolean> useHotkeys = new HashMap<>();
     public static HashMap<UUID, Set<UUID>> trustedPlayers = new HashMap<>();
     public static HashMap<UUID, Long> cd1 = new HashMap<>();
@@ -34,7 +32,7 @@ public class ElementSMP extends JavaPlugin implements Listener {
     @Override
     public void onEnable() {
         instance = this;
-        saveDefaultConfig(); // Creates config.yml if it doesn't exist
+        saveDefaultConfig();
         Bukkit.getPluginManager().registerEvents(this, this);
         
         getCommand("ability").setExecutor(new AbilityHandler());
@@ -63,7 +61,6 @@ public class ElementSMP extends JavaPlugin implements Listener {
         return trustedPlayers.getOrDefault(owner.getUniqueId(), new HashSet<>()).contains(target.getUniqueId());
     }
 
-    // --- ABILITY LOGIC ---
     public static void triggerAbility(Player p, int num) {
         UUID id = p.getUniqueId();
         String el = playerElements.getOrDefault(id, "Wind").toLowerCase();
@@ -74,20 +71,12 @@ public class ElementSMP extends JavaPlugin implements Listener {
             return;
         }
 
-        boolean success = false;
-        if (num == 1) {
-            success = switch (el) {
-                case "nature" -> performNatureGrapple(p);
-                case "void" -> performVoidWarp(p);
-                default -> false;
-            };
-        } else {
-            success = switch (el) {
-                case "void" -> performInfiniteVoid(p);
-                case "ice" -> performAbsoluteZero(p);
-                default -> false;
-            };
-        }
+        boolean success = switch (el) {
+            case "void" -> (num == 1) ? performVoidWarp(p) : performInfiniteVoid(p);
+            case "ice" -> (num == 2) ? performAbsoluteZero(p) : false;
+            case "nature" -> (num == 1) ? performNatureGrapple(p) : false;
+            default -> false;
+        };
 
         if (success) {
             long cooldown = getInstance().getConfig().getLong("cooldowns.a" + num, (num == 1 ? 12 : 60)) * 1000;
@@ -120,8 +109,6 @@ public class ElementSMP extends JavaPlugin implements Listener {
     private static void spawnVoidGuard(Player owner, Location loc, EntityType type, String name) {
         LivingEntity guard = (LivingEntity) loc.getWorld().spawnEntity(loc, type);
         guard.setCustomName(name);
-        guard.getAttribute(org.bukkit.attribute.Attribute.GENERIC_ATTACK_DAMAGE).setBaseValue(2.0);
-
         new BukkitRunnable() {
             int ticks = 0;
             @Override public void run() {
@@ -150,7 +137,7 @@ public class ElementSMP extends JavaPlugin implements Listener {
     private static boolean performNatureGrapple(Player p) {
         RayTraceResult res = p.getWorld().rayTraceBlocks(p.getEyeLocation(), p.getEyeLocation().getDirection(), 25);
         if (res == null || res.getHitBlock() == null) return false;
-        p.setVelocity(res.getHitPosition().toLocation(p.getWorld()).toVector().subtract(p.getEyeLocation().toVector()).normalize().multiply(2.1).setY(0.5));
+        p.setVelocity(res.getHitPosition().toLocation(p.getWorld()).toVector().subtract(p.getEyeLocation().toVector()).normalize().multiply(2.1));
         return true;
     }
 
@@ -189,35 +176,23 @@ public class ElementSMP extends JavaPlugin implements Listener {
     }
 }
 
-// --- COMMAND CLASSES ---
-class TrustCommand implements CommandExecutor {
-    @Override public boolean onCommand(CommandSender s, Command c, String l, String[] a) {
-        if (!(s instanceof Player p) || a.length == 0) return false;
-        Player target = Bukkit.getPlayer(a[0]);
-        if (target == null) return false;
-        Set<UUID> trusted = ElementSMP.trustedPlayers.computeIfAbsent(p.getUniqueId(), k -> new HashSet<>());
-        if (c.getName().equalsIgnoreCase("trust")) { trusted.add(target.getUniqueId()); p.sendMessage("§aTrusted " + target.getName()); }
-        else { trusted.remove(target.getUniqueId()); p.sendMessage("§cUntrusted " + target.getName()); }
-        return true;
-    }
-}
-class AdminItemCommand implements CommandExecutor {
-    @Override public boolean onCommand(CommandSender s, Command c, String l, String[] a) {
-        if (!(s instanceof Player p) || !s.isOp()) return true;
-        ItemStack star = new ItemStack(Material.NETHER_STAR);
-        ItemMeta m = star.getItemMeta();
-        m.setDisplayName(c.getName().contains("chaos") ? "§5§lChaos Reroll" : "§b§lElemental Reroll");
-        star.setItemMeta(m); p.getInventory().addItem(star); return true;
-    }
-}
+// --- COMMAND HANDLERS ---
 class AdminElementHandler implements CommandExecutor {
     @Override public boolean onCommand(CommandSender s, Command c, String l, String[] args) {
-        if (s.isOp() && args.length >= 2) {
+        if (!s.isOp()) return true;
+        if (args.length > 0 && args[0].equalsIgnoreCase("reload")) {
+            ElementSMP.getInstance().reloadConfig();
+            s.sendMessage("§a[ElementSMP] Config reloaded!");
+            return true;
+        }
+        if (args.length >= 2) {
             Player t = Bukkit.getPlayer(args[1]);
-            if (t != null) { ElementSMP.playerElements.put(t.getUniqueId(), args[2]); s.sendMessage("§aDone."); }
+            if (t != null) { ElementSMP.playerElements.put(t.getUniqueId(), args[2]); s.sendMessage("§aSet " + t.getName() + " to " + args[2]); }
         }
         return true;
     }
 }
 class AbilityHandler implements CommandExecutor { public boolean onCommand(CommandSender s, Command c, String l, String[] a) { if (s instanceof Player p) ElementSMP.triggerAbility(p, (a.length > 0 && a[0].equals("2")) ? 2 : 1); return true; } }
 class ControlToggle implements CommandExecutor { public boolean onCommand(CommandSender s, Command c, String l, String[] a) { if (s instanceof Player p) { ElementSMP.useHotkeys.put(p.getUniqueId(), !ElementSMP.useHotkeys.getOrDefault(p.getUniqueId(), false)); p.sendMessage("§bHotkeys Toggled."); } return true; } }
+class TrustCommand implements CommandExecutor { @Override public boolean onCommand(CommandSender s, Command c, String l, String[] a) { if (!(s instanceof Player p) || a.length == 0) return false; Player target = Bukkit.getPlayer(a[0]); if (target == null) return false; Set<UUID> trusted = ElementSMP.trustedPlayers.computeIfAbsent(p.getUniqueId(), k -> new HashSet<>()); if (c.getName().equalsIgnoreCase("trust")) { trusted.add(target.getUniqueId()); p.sendMessage("§aTrusted " + target.getName()); } else { trusted.remove(target.getUniqueId()); p.sendMessage("§cUntrusted " + target.getName()); } return true; } }
+class AdminItemCommand implements CommandExecutor { @Override public boolean onCommand(CommandSender s, Command c, String l, String[] a) { if (!(s instanceof Player p) || !s.isOp()) return true; ItemStack star = new ItemStack(Material.NETHER_STAR); ItemMeta m = star.getItemMeta(); m.setDisplayName(c.getName().contains("chaos") ? "§5§lChaos Reroll" : "§b§lElemental Reroll"); star.setItemMeta(m); p.getInventory().addItem(star); return true; } }
