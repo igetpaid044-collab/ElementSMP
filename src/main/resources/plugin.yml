@@ -1,12 +1,14 @@
 name: ElementSMP
-version: 2.0
+version: 1.0
 main: me.kaloni.ElementSMP
-api-version: '1.21'
+api-version: 1.20 # Or your specific server version
 commands:
-  controls: {description: Toggle offhand controls}
-  trust: {description: Immune a player}
-  untrust: {description: Remove immunity}
-  elemental: {description: Help and Lore}
-  elementsmp: {description: Admin commands}
-  give-reroll: {description: Give Reroll}
-  give-chaos: {description: Give Chaos Reroll}
+  elemental:
+    description: Set a player's element.
+    usage: /elemental set <player> <element>
+  ability:
+    description: Trigger an ability.
+    usage: /ability <1/2>
+  controls:
+    description: Toggle hotkeys.
+    usage: /controls
