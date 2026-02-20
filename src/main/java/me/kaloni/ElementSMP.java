@@ -3,10 +3,10 @@ package me.kaloni;
 import net.md_5.bungee.api.ChatMessageType;
 import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.*;
-import org.bukkit.block.Block;
 import org.bukkit.command.*;
 import org.bukkit.entity.*;
 import org.bukkit.event.*;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.player.*;
 import org.bukkit.inventory.*;
@@ -14,171 +14,215 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.*;
 import org.bukkit.scheduler.BukkitRunnable;
-import org.bukkit.util.Vector;
 import java.util.*;
 
 public class ElementSMP extends JavaPlugin implements Listener {
 
-    private static ElementSMP instance;
-    public static ElementSMP getInstance() { return instance; }
-
     public static HashMap<UUID, String> playerElements = new HashMap<>();
     public static HashMap<UUID, Boolean> useHotkeys = new HashMap<>();
     public static HashMap<UUID, Set<UUID>> trustedPlayers = new HashMap<>();
-    public static HashMap<UUID, Long> cd1 = new HashMap<>();
-    public static HashMap<UUID, Long> cd2 = new HashMap<>();
-    public static HashMap<UUID, Long> doubleJumpTimer = new HashMap<>();
+    public static HashMap<UUID, Long> djCooldown = new HashMap<>();
+    private static final HashMap<UUID, Location> activeDomains = new HashMap<>();
     
-    private final List<String> elementList = Arrays.asList("Wind", "Fire", "Water", "Earth", "Lightning", "Void", "Ice", "Nature", "Blood", "Gravity");
+    private final List<String> elements = Arrays.asList("Wind", "Fire", "Water", "Earth", "Lightning", "Void", "Ice", "Nature", "Blood", "Gravity");
 
     @Override
     public void onEnable() {
-        instance = this;
-        saveDefaultConfig();
         Bukkit.getPluginManager().registerEvents(this, this);
-        
         getCommand("ability").setExecutor(new AbilityHandler());
         getCommand("controls").setExecutor(new ControlToggle());
-        getCommand("give-reroll").setExecutor(new AdminItemCommand());
         getCommand("elementsmp").setExecutor(new AdminElementHandler());
         getCommand("trust").setExecutor(new TrustHandler());
         getCommand("untrust").setExecutor(new TrustHandler());
+        getCommand("give-reroll").setExecutor(new AdminItemCommand());
+        getCommand("give-chaos").setExecutor(new AdminItemCommand());
 
         new BukkitRunnable() {
             @Override
             public void run() {
                 for (Player p : Bukkit.getOnlinePlayers()) {
                     updateActionBarHUD(p);
-                    // Passive double jump check
-                    if (getElement(p).equals("wind") && !p.getAllowFlight()) p.setAllowFlight(true);
+                    handleDomainVision(p);
+                    if (getElement(p).contains("wind") && !djCooldown.containsKey(p.getUniqueId())) p.setAllowFlight(true);
                 }
             }
         }.runTaskTimer(this, 0L, 10L);
     }
 
-    private String getElement(Player p) { return playerElements.getOrDefault(p.getUniqueId(), "Wind").toLowerCase(); }
+    public String getElement(Player p) { return playerElements.getOrDefault(p.getUniqueId(), "Wind").toLowerCase(); }
 
-    // --- PASSIVE: NO FALL DAMAGE & DOUBLE JUMP ---
-    @EventHandler
-    public void onDamage(EntityDamageEvent e) {
-        if (e.getEntity() instanceof Player p && e.getCause() == EntityDamageEvent.DamageCause.FALL) {
-            String el = getElement(p);
-            if (el.equals("wind") || el.equals("gravity") || el.equals("void")) {
-                e.setCancelled(true);
-            }
-        }
-    }
-
-    @EventHandler
-    public void onJump(PlayerToggleFlightEvent e) {
-        Player p = e.getPlayer();
-        if (getElement(p).equals("wind") && p.getGameMode() != GameMode.CREATIVE) {
-            e.setCancelled(true);
-            p.setAllowFlight(false);
-            p.setFlying(false);
-            p.setVelocity(p.getLocation().getDirection().multiply(1.2).setY(1.0));
-            p.getWorld().spawnParticle(Particle.CLOUD, p.getLocation(), 15, 0.2, 0.2, 0.2, 0.1);
-            p.playSound(p.getLocation(), Sound.ENTITY_WIND_CHARGE_WIND_BURST, 1f, 1f);
-            
-            // 15 second cooldown for double jump
-            new BukkitRunnable() {
-                @Override public void run() { if (p.isOnline()) p.setAllowFlight(true); }
-            }.runTaskLater(this, 300L); // 15 seconds
-        }
-    }
-
-    // --- DOMAIN EXPANSION LOGIC (Correctly Coded for 1.21) ---
-    public void spawnDomain(Player caster, Material barrierType, int radius) {
-        Location center = caster.getLocation();
-        List<Block> changedBlocks = new ArrayList<>();
-
-        for (int x = -radius; x <= radius; x++) {
-            for (int y = -radius; y <= radius; y++) {
-                for (int z = -radius; z <= radius; z++) {
-                    Location loc = center.clone().add(x, y, z);
-                    if (loc.distance(center) > radius - 1 && loc.distance(center) <= radius) {
-                        caster.sendBlockChange(loc, barrierType.createBlockData());
-                        changedBlocks.add(loc.getBlock());
-                    }
+    private void handleDomainVision(Player p) {
+        for (Map.Entry<UUID, Location> entry : activeDomains.entrySet()) {
+            if (p.getWorld().equals(entry.getValue().getWorld()) && p.getLocation().distance(entry.getValue()) <= 10.5) {
+                UUID casterId = entry.getKey();
+                if (!p.getUniqueId().equals(casterId) && !trustedPlayers.getOrDefault(casterId, new HashSet<>()).contains(p.getUniqueId())) {
+                    p.addPotionEffect(new PotionEffect(PotionEffectType.DARKNESS, 30, 0, false, false));
+                    p.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 30, 0, false, false));
                 }
             }
         }
-
-        new BukkitRunnable() {
-            @Override
-            public void run() {
-                for (Block b : changedBlocks) caster.sendBlockChange(b.getLocation(), b.getBlockData());
-            }
-        }.runTaskLater(this, 200L); // 10 seconds duration
     }
 
-    public static void triggerAbility(Player p, int num) {
-        UUID id = p.getUniqueId();
-        String el = instance.getElement(p);
-        HashMap<UUID, Long> cdMap = (num == 1) ? cd1 : cd2;
+    // --- SLOT MACHINE ANIMATION ---
+    @EventHandler
+    public void onReroll(PlayerInteractEvent e) {
+        ItemStack item = e.getItem();
+        if (item == null || item.getType() != Material.NETHER_STAR || !item.hasItemMeta()) return;
+        Player p = e.getPlayer();
+        boolean isChaos = item.getItemMeta().getDisplayName().contains("Chaos");
+        item.setAmount(item.getAmount() - 1);
 
-        if (cdMap.getOrDefault(id, 0L) > System.currentTimeMillis()) return;
+        new BukkitRunnable() {
+            int ticks = 0;
+            @Override
+            public void run() {
+                if (ticks < 30) {
+                    String roll = elements.get(new Random().nextInt(elements.size()));
+                    p.sendTitle("§7Rolling...", (isChaos ? "§k" : "§f") + roll, 0, 5, 0);
+                    p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_HAT, 1f, 1f + (ticks * 0.04f));
+                } else {
+                    String e1 = elements.get(new Random().nextInt(elements.size()));
+                    if (isChaos) {
+                        String e2; 
+                        do { e2 = elements.get(new Random().nextInt(elements.size())); } while (e1.equals(e2));
+                        playerElements.put(p.getUniqueId(), e1 + "-" + e2);
+                        p.sendTitle("§5§lGLITCHED", "§d" + e1 + " §f& §5" + e2, 10, 60, 10);
+                        p.playSound(p.getLocation(), Sound.ENTITY_ZOMBIE_VILLAGER_CURE, 1f, 0.5f);
+                    } else {
+                        playerElements.put(p.getUniqueId(), e1);
+                        p.sendTitle("§b§lNEW ELEMENT", "§f" + e1, 10, 40, 10);
+                        p.playSound(p.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1.2f);
+                    }
+                    this.cancel();
+                }
+                ticks++;
+            }
+        }.runTaskTimer(this, 0L, 2L);
+    }
 
-        boolean success = false;
-        if (num == 1) { // Tactical
-            if (el.equals("void")) { p.teleport(p.getEyeLocation().add(p.getEyeLocation().getDirection().multiply(8))); success = true; }
-            if (el.equals("ice")) { p.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 100, 2)); success = true; }
-        } else { // Domain / Ultimate
-            if (el.equals("void")) { instance.spawnDomain(p, Material.BLACK_STAINED_GLASS, 10); success = true; }
-            if (el.equals("ice")) { instance.spawnDomain(p, Material.ICE, 8); success = true; }
+    // --- THE OMNI-COMBO SYSTEM ---
+    public static void triggerAbility(Player p, int n) {
+        ElementSMP inst = (ElementSMP) Bukkit.getPluginManager().getPlugin("ElementSMP");
+        String el = inst.getElement(p);
+
+        if (n == 1 && el.contains("-")) {
+            executeCombo(p, el);
+            return;
         }
 
-        if (success) cdMap.put(id, System.currentTimeMillis() + (num == 1 ? 10000 : 60000));
+        if (n == 2 && (el.contains("void") || el.contains("ice") || el.contains("gravity"))) {
+            inst.startDomain(p);
+        } else {
+            p.setVelocity(p.getLocation().getDirection().multiply(1.4).setY(0.3));
+        }
+    }
+
+    private static void executeCombo(Player p, String el) {
+        // STEAM (Fire + Water)
+        if (el.contains("fire") && el.contains("water")) {
+            p.getWorld().spawnParticle(Particle.CLOUD, p.getLocation(), 100, 3, 1, 3, 0.05);
+            p.playSound(p.getLocation(), Sound.BLOCK_FIRE_EXTINGUISH, 1f, 1f);
+            for (Entity e : p.getNearbyEntities(5, 5, 5)) if (e instanceof LivingEntity t && e != p) { t.damage(4); t.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 60, 2)); }
+        }
+        // STORM (Lightning + Water)
+        else if (el.contains("lightning") && el.contains("water")) {
+            p.getWorld().spawnParticle(Particle.DRIPPING_WATER, p.getLocation(), 100, 2, 2, 2);
+            for (Entity e : p.getNearbyEntities(6, 6, 6)) if (e instanceof LivingEntity t && e != p) { p.getWorld().strikeLightning(t.getLocation()); t.damage(2); }
+        }
+        // SANDSTORM (Earth + Wind)
+        else if (el.contains("earth") && el.contains("wind")) {
+            p.getWorld().spawnParticle(Particle.BLOCK_DUST, p.getLocation(), 200, 4, 2, 4, 0.1, Material.SAND.createBlockData());
+            for (Entity e : p.getNearbyEntities(7, 7, 7)) if (e instanceof LivingEntity t && e != p) t.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 100, 0));
+        }
+        // VOLCANO (Earth + Fire)
+        else if (el.contains("earth") && el.contains("fire")) {
+            p.getWorld().spawnParticle(Particle.LAVA, p.getLocation(), 50, 1, 1, 1);
+            p.getLocation().getBlock().setType(Material.MAGMA_BLOCK);
+            for (Entity e : p.getNearbyEntities(5, 5, 5)) if (e instanceof LivingEntity t && e != p) t.setFireTicks(100);
+        }
+        // MUD (Earth + Water)
+        else if (el.contains("earth") && el.contains("water")) {
+            for (Entity e : p.getNearbyEntities(5, 5, 5)) if (e instanceof LivingEntity t && e != p) t.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 200, 5));
+        }
+        // BLOOD FREEZE (Blood + Ice)
+        else if (el.contains("blood") && el.contains("ice")) {
+            for (Entity e : p.getNearbyEntities(6, 6, 6)) if (e instanceof LivingEntity t && e != p) { t.damage(6); t.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 100, 10)); }
+        }
+        // BLACK HOLE (Gravity + Void)
+        else if (el.contains("gravity") && el.contains("void")) {
+            p.getWorld().spawnParticle(Particle.SQUID_INK, p.getLocation(), 300, 1, 1, 1, 0.02);
+            for (Entity e : p.getNearbyEntities(12, 12, 12)) if (e instanceof LivingEntity t && e != p) t.setVelocity(p.getLocation().toVector().subtract(t.getLocation().toVector()).normalize().multiply(1.5));
+        }
+        // Default Glitch Dash
+        else {
+            p.setVelocity(p.getLocation().getDirection().multiply(2.5));
+            p.getWorld().spawnParticle(Particle.WITCH, p.getLocation(), 50, 0.5, 0.5, 0.5);
+        }
+    }
+
+    public void startDomain(Player p) {
+        Location loc = p.getLocation();
+        activeDomains.put(p.getUniqueId(), loc);
+        p.sendMessage("§d§lDOMAIN EXPANSION!");
+        new BukkitRunnable() { @Override public void run() { activeDomains.remove(p.getUniqueId()); } }.runTaskLater(this, 300L);
+    }
+
+    @EventHandler public void onMove(PlayerMoveEvent e) {
+        for (Location center : activeDomains.values()) if (e.getTo().distance(center) > 10.5 && e.getFrom().distance(center) <= 10.5) e.setCancelled(true);
+    }
+
+    @EventHandler public void onJump(PlayerToggleFlightEvent e) {
+        Player p = e.getPlayer();
+        if (getElement(p).contains("wind") && p.getGameMode() != GameMode.CREATIVE) {
+            e.setCancelled(true); p.setAllowFlight(false);
+            p.setVelocity(p.getLocation().getDirection().multiply(1.5).setY(1.0));
+            djCooldown.put(p.getUniqueId(), System.currentTimeMillis() + 15000);
+            new BukkitRunnable() { @Override public void run() { djCooldown.remove(p.getUniqueId()); } }.runTaskLater(this, 300L);
+        }
+    }
+
+    @EventHandler public void onFall(EntityDamageEvent e) {
+        if (e.getEntity() instanceof Player p && e.getCause() == EntityDamageEvent.DamageCause.FALL) {
+            String el = getElement(p); if (el.contains("wind") || el.contains("gravity") || el.contains("void")) e.setCancelled(true);
+        }
     }
 
     private void updateActionBarHUD(Player p) {
         String el = getElement(p).toUpperCase();
-        p.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent("§b§l" + el + " §8| §fDouble Jump: §aREADY"));
-    }
-
-    @EventHandler public void onSwap(PlayerSwapHandItemsEvent e) {
-        if (useHotkeys.getOrDefault(e.getPlayer().getUniqueId(), false)) {
-            e.setCancelled(true);
-            triggerAbility(e.getPlayer(), e.getPlayer().isSneaking() ? 2 : 1);
-        }
+        long dj = djCooldown.getOrDefault(p.getUniqueId(), 0L) - System.currentTimeMillis();
+        p.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent("§5§l" + el + " §8| §fJump: " + (dj<=0?"§aREADY":"§c"+(dj/1000)+"s")));
     }
 }
 
-// --- NEW COMMAND HANDLERS ---
-
+// SUPPORT CLASSES
 class TrustHandler implements CommandExecutor {
-    @Override
     public boolean onCommand(CommandSender s, Command c, String l, String[] a) {
         if (!(s instanceof Player p) || a.length == 0) return false;
-        Player target = Bukkit.getPlayer(a[0]);
-        if (target == null) return false;
-
-        Set<UUID> trusted = ElementSMP.trustedPlayers.computeIfAbsent(p.getUniqueId(), k -> new HashSet<>());
-        if (c.getName().equalsIgnoreCase("trust")) {
-            trusted.add(target.getUniqueId());
-            p.sendMessage("§aYou now trust " + target.getName());
-        } else {
-            trusted.remove(target.getUniqueId());
-            p.sendMessage("§cYou no longer trust " + target.getName());
-        }
+        Player t = Bukkit.getPlayer(a[0]); if (t == null) return false;
+        Set<UUID> set = ElementSMP.trustedPlayers.computeIfAbsent(p.getUniqueId(), k -> new HashSet<>());
+        if (c.getName().equals("trust")) { set.add(t.getUniqueId()); p.sendMessage("§aTrusted " + t.getName()); }
+        else { set.remove(t.getUniqueId()); p.sendMessage("§cUntrusted " + t.getName()); }
         return true;
     }
 }
-
 class AdminElementHandler implements CommandExecutor {
-    @Override
     public boolean onCommand(CommandSender s, Command c, String l, String[] a) {
-        if (!s.isOp()) return true;
-        if (a.length >= 3 && a[0].equalsIgnoreCase("set")) {
+        if (s.isOp() && a.length >= 3 && a[0].equalsIgnoreCase("set")) {
             Player t = Bukkit.getPlayer(a[1]);
-            if (t != null) {
-                ElementSMP.playerElements.put(t.getUniqueId(), a[2]);
-                s.sendMessage("§aSet " + t.getName() + " to " + a[2]);
-            }
+            if (t != null) { ElementSMP.playerElements.put(t.getUniqueId(), a[2]); s.sendMessage("§aElement set."); }
         }
         return true;
     }
 }
-class AbilityHandler implements CommandExecutor { public boolean onCommand(CommandSender s, Command c, String l, String[] a) { if (s instanceof Player p) ElementSMP.triggerAbility(p, (a.length > 0 && a[0].equals("2")) ? 2 : 1); return true; } }
-class ControlToggle implements CommandExecutor { public boolean onCommand(CommandSender s, Command c, String l, String[] a) { if (s instanceof Player p) { ElementSMP.useHotkeys.put(p.getUniqueId(), !ElementSMP.useHotkeys.getOrDefault(p.getUniqueId(), false)); p.sendMessage("§bHotkeys Toggled."); } return true; } }
-class AdminItemCommand implements CommandExecutor { public boolean onCommand(CommandSender s, Command c, String l, String[] a) { if (s instanceof Player p && s.isOp()) { ItemStack star = new ItemStack(Material.NETHER_STAR); ItemMeta m = star.getItemMeta(); m.setDisplayName("§b§lElemental Reroll"); star.setItemMeta(m); p.getInventory().addItem(star); } return true; } }
+class AbilityHandler implements CommandExecutor { public boolean onCommand(CommandSender s, Command c, String l, String[] a) { if (s instanceof Player p) ElementSMP.triggerAbility(p, (a.length > 0 && a[0].equals("2") ? 2 : 1)); return true; } }
+class ControlToggle implements CommandExecutor { public boolean onCommand(CommandSender s, Command c, String l, String[] a) { if (s instanceof Player p) { ElementSMP.useHotkeys.put(p.getUniqueId(), !ElementSMP.useHotkeys.getOrDefault(p.getUniqueId(), false)); p.sendMessage("§bHotkeys toggled."); } return true; } }
+class AdminItemCommand implements CommandExecutor {
+    public boolean onCommand(CommandSender s, Command c, String l, String[] a) {
+        if (s instanceof Player p && s.isOp()) {
+            ItemStack i = new ItemStack(Material.NETHER_STAR); ItemMeta m = i.getItemMeta();
+            m.setDisplayName(c.getName().contains("chaos") ? "§5§lChaos Reroll" : "§b§lElemental Reroll");
+            i.setItemMeta(m); p.getInventory().addItem(i);
+        }
+        return true;
+    }
+}
