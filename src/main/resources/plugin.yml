@@ -1,14 +1,17 @@
 name: ElementSMP
 version: 1.0
 main: me.kaloni.ElementSMP
-api-version: 1.20 # Or your specific server version
+api-version: "1.21"
 commands:
   elemental:
-    description: Set a player's element.
-    usage: /elemental set <player> <element>
+    description: Main command for elements and help.
+    usage: /elemental <set/help>
   ability:
-    description: Trigger an ability.
+    description: Manually trigger an elemental ability.
     usage: /ability <1/2>
   controls:
-    description: Toggle hotkeys.
+    description: Toggle the sneak+swap hotkeys.
     usage: /controls
+  trust:
+    description: Trust a player to immune them from your effects.
+    usage: /trust <player>
