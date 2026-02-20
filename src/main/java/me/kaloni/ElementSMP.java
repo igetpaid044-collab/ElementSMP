@@ -26,11 +26,11 @@ public class ElementSMP extends JavaPlugin implements Listener {
         getCommand("ability").setExecutor(new AbilityHandler());
         getCommand("controls").setExecutor(new ControlToggle());
         
-        // Admin Command + Tab Completer
         AdminCommands admin = new AdminCommands(this);
         getCommand("elements").setExecutor(admin);
         getCommand("elements").setTabCompleter(admin);
 
+        // Passive Ticker
         Bukkit.getScheduler().runTaskTimer(this, () -> {
             for (Player p : Bukkit.getOnlinePlayers()) applyPassives(p);
         }, 0L, 100L);
@@ -90,7 +90,6 @@ public class ElementSMP extends JavaPlugin implements Listener {
     private void applyPassives(Player p) {
         String e = playerElements.get(p.getUniqueId());
         if (e == null) return;
-        // Corrected PotionEffectType from DAMAGE_RESISTANCE to RESISTANCE
         if (e.equals("Void")) p.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 120, 0));
         if (e.equals("Fire")) p.addPotionEffect(new PotionEffect(PotionEffectType.FIRE_RESISTANCE, 120, 0));
     }
@@ -118,7 +117,7 @@ class AdminCommands implements CommandExecutor, TabCompleter {
         if (!s.isOp()) { s.sendMessage("§cNo permission."); return true; }
         if (a.length >= 2 && a[0].equalsIgnoreCase("set")) {
             Player t = Bukkit.getPlayer(a[1]);
-            if (t != null) {
+            if (t != null && a.length >= 3) {
                 ElementSMP.playerElements.put(t.getUniqueId(), a[2]);
                 s.sendMessage("§aSet " + t.getName() + " to " + a[2]);
             }
@@ -132,7 +131,7 @@ class AdminCommands implements CommandExecutor, TabCompleter {
         if (!s.isOp()) return Collections.emptyList();
         if (a.length == 1) return Arrays.asList("set", "reroll");
         if (a.length == 3 && a[0].equalsIgnoreCase("set")) {
-            return Arrays.asList(plugin.getElementList()).stream()
+            return Arrays.stream(plugin.getElementList())
                 .filter(el -> el.toLowerCase().startsWith(a[2].toLowerCase()))
                 .collect(Collectors.toList());
         }
@@ -141,6 +140,7 @@ class AdminCommands implements CommandExecutor, TabCompleter {
 }
 
 class AbilityHandler implements CommandExecutor {
+    @Override
     public boolean onCommand(CommandSender s, Command c, String l, String[] a) {
         if (s instanceof Player) ElementSMP.triggerAbility((Player) s, (a.length > 0 && a[0].equals("2")) ? 2 : 1);
         return true;
@@ -148,6 +148,7 @@ class AbilityHandler implements CommandExecutor {
 }
 
 class ControlToggle implements CommandExecutor {
+    @Override
     public boolean onCommand(CommandSender s, Command c, String l, String[] a) {
         if (!(s instanceof Player)) return true;
         UUID id = ((Player) s).getUniqueId();
