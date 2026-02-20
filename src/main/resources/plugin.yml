@@ -6,17 +6,13 @@ commands:
   ability:
     description: Trigger your power.
   controls:
-    description: Toggle swap-hand triggers.
-  trust:
-    description: Trust a teammate.
-  untrust:
-    description: Untrust a teammate.
+    description: Toggle hotkeys.
   give-reroll:
     permission: elementsmp.admin
   give-chaos:
     permission: elementsmp.admin
   elementsmp:
-    description: Main admin command.
+    description: Admin element control.
     permission: elementsmp.admin
 permissions:
   elementsmp.admin:
