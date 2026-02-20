@@ -63,20 +63,23 @@ public class ElementSMP extends JavaPlugin implements Listener {
     }
 
     // --- UPDATED UI FORMAT: (Element) (AB1:Name(MM:SS)) (AB2:Name(MM:SS)) ---
-    private void updateHUD(Player p) {
-        String el = getElement(p).toUpperCase();
-        UUID id = p.getUniqueId();
-        long now = System.currentTimeMillis();
+  private void updateHUD(Player p) {
+    String el = getElement(p).toUpperCase();
+    UUID id = p.getUniqueId();
+    long now = System.currentTimeMillis();
 
-        String ab1Name = getAbilityName(el, 1);
-        String ab2Name = getAbilityName(el, 2);
+    String ab1Name = getAbilityName(el, 1);
+    String ab2Name = getAbilityName(el, 2);
 
-        String t1 = formatCooldown(cd1.getOrDefault(id, 0L) - now);
-        String t2 = formatCooldown(cd2.getOrDefault(id, 0L) - now);
+    String t1 = formatCooldown(cd1.getOrDefault(id, 0L) - now);
+    String t2 = formatCooldown(cd2.getOrDefault(id, 0L) - now);
 
-        String hud = String.format("§6§l(%s) §b(AB1:%s(%s)) §d(AB2:%s(%s))", el, ab1Name, t1, ab2Name, t2);
-        p.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(hud));
-    }
+    // Matches your requested UI style perfectly
+    String hud = String.format("§6§l%s §8| §bAb1: %s(%s) §8| §dAb2: %s(%s)", 
+                  el, ab1Name, t1, ab2Name, t2);
+    
+    p.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(hud));
+}
 
     private String formatCooldown(long ms) {
         if (ms <= 0) return "§aREADY";
