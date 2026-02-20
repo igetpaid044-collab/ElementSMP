@@ -98,11 +98,16 @@ public class ElementSMP extends JavaPlugin implements Listener {
             }
         }
 
-        spawnVoidGuard(p, center, EntityType.WARDEN, ChatColor.DARK_PURPLE + "" + ChatColor.BOLD + "Void Sentinel");
+        spawnVoidGuard(p, center, EntityType.WARDEN, "§5§lVoid Sentinel");
+        
+        // Safe Potion Lookup for Blindness and Darkness
+        PotionEffectType blind = PotionEffectType.getByName("BLINDNESS");
+        PotionEffectType dark = PotionEffectType.getByName("DARKNESS");
+
         for (Entity e : p.getNearbyEntities(radius, 10, radius)) {
             if (e instanceof Player target && !isTrusted(p, target) && target != p) {
-                target.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 200, 0));
-                target.addPotionEffect(new PotionEffect(PotionEffectType.DARKNESS, 200, 0));
+                if (blind != null) target.addPotionEffect(new PotionEffect(blind, 200, 0));
+                if (dark != null) target.addPotionEffect(new PotionEffect(dark, 200, 0));
             }
         }
         return true;
@@ -111,12 +116,6 @@ public class ElementSMP extends JavaPlugin implements Listener {
     private static void spawnVoidGuard(Player owner, Location loc, EntityType type, String name) {
         LivingEntity guard = (LivingEntity) loc.getWorld().spawnEntity(loc, type);
         guard.setCustomName(name);
-        
-        // Corrected Attribute Variable Name
-        if (guard.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE) != null) {
-            guard.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE).setBaseValue(10.0);
-        }
-
         new BukkitRunnable() {
             int ticks = 0;
             @Override public void run() {
@@ -133,11 +132,18 @@ public class ElementSMP extends JavaPlugin implements Listener {
 
     private static boolean performAbsoluteZero(Player p) {
         int r = getInstance().getConfig().getInt("abilities.ice.freeze-radius", 10);
+        
+        // SAFE LOOKUP: This fixes your "Cannot find SLOWNESS/SLOW" errors
+        PotionEffectType slowness = PotionEffectType.getByName("SLOWNESS");
+        if (slowness == null) slowness = PotionEffectType.getByName("SLOW");
+        
+        PotionEffectType jumpBoost = PotionEffectType.getByName("JUMP_BOOST");
+        if (jumpBoost == null) jumpBoost = PotionEffectType.getByName("JUMP");
+
         for (Entity e : p.getNearbyEntities(r, 5, r)) {
             if (e instanceof Player target && !isTrusted(p, target) && target != p) {
-                // FIXED POTION CONSTANTS
-                target.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 100, 255));
-                target.addPotionEffect(new PotionEffect(PotionEffectType.JUMP_BOOST, 100, 200));
+                if (slowness != null) target.addPotionEffect(new PotionEffect(slowness, 100, 255));
+                if (jumpBoost != null) target.addPotionEffect(new PotionEffect(jumpBoost, 100, 200));
             }
         }
         return true;
@@ -165,7 +171,10 @@ public class ElementSMP extends JavaPlugin implements Listener {
 
     private void applyPassives(Player p) {
         String el = playerElements.getOrDefault(p.getUniqueId(), "Wind").toLowerCase();
-        if (el.equals("void")) p.addPotionEffect(new PotionEffect(PotionEffectType.NIGHT_VISION, 100, 0, false, false));
+        PotionEffectType nv = PotionEffectType.getByName("NIGHT_VISION");
+        if (el.equals("void") && nv != null) {
+            p.addPotionEffect(new PotionEffect(nv, 100, 0, false, false));
+        }
     }
 
     @EventHandler public void onReroll(PlayerInteractEvent e) {
@@ -185,13 +194,13 @@ public class ElementSMP extends JavaPlugin implements Listener {
     }
 }
 
-// --- COMMAND CLASSES (UNCHANGED BUT INTEGRATED) ---
+// --- COMMAND CLASSES ---
 class AdminElementHandler implements CommandExecutor {
     @Override public boolean onCommand(CommandSender s, Command c, String l, String[] args) {
         if (!s.isOp()) return true;
         if (args.length > 0 && args[0].equalsIgnoreCase("reload")) {
             ElementSMP.getInstance().reloadConfig();
-            s.sendMessage("§aConfig reloaded!");
+            s.sendMessage("§a[ElementSMP] Config reloaded!");
             return true;
         }
         if (args.length >= 2) {
