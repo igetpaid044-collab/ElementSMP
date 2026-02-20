@@ -10,6 +10,7 @@ import org.bukkit.event.player.*;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.*;
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class ElementSMP extends JavaPlugin implements Listener {
 
@@ -21,11 +22,15 @@ public class ElementSMP extends JavaPlugin implements Listener {
     @Override
     public void onEnable() {
         Bukkit.getPluginManager().registerEvents(this, this);
+        
         getCommand("ability").setExecutor(new AbilityHandler());
         getCommand("controls").setExecutor(new ControlToggle());
-        getCommand("elements").setExecutor(new AdminCommands(this));
+        
+        // Admin Command + Tab Completer
+        AdminCommands admin = new AdminCommands(this);
+        getCommand("elements").setExecutor(admin);
+        getCommand("elements").setTabCompleter(admin);
 
-        // PASSIVE TICKER (Every 5 seconds)
         Bukkit.getScheduler().runTaskTimer(this, () -> {
             for (Player p : Bukkit.getOnlinePlayers()) applyPassives(p);
         }, 0L, 100L);
@@ -58,20 +63,18 @@ public class ElementSMP extends JavaPlugin implements Listener {
         }
 
         String name = (num == 1) ? getAbility1(e) : getAbility2(e);
-        double dmg = (e.equals("Void") && num == 1) ? 12.0 : 6.0;
-
         p.sendMessage("§a§l" + icon + " Used: §f" + name);
         
         for (Entity target : p.getNearbyEntities(7, 7, 7)) {
             if (target instanceof LivingEntity && !target.equals(p)) {
-                ((LivingEntity) target).damage(dmg, p);
+                ((LivingEntity) target).damage(6.0, p);
                 playEffects(target.getLocation(), e);
                 break;
             }
         }
 
-        p.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent("§a§l" + icon + " " + name.toUpperCase() + " ACTIVATED"));
-        cooldowns.put(p.getUniqueId(), System.currentTimeMillis() + 15000);
+        p.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent("§a§l" + icon + " " + name.toUpperCase()));
+        cooldowns.put(p.getUniqueId(), System.currentTimeMillis() + 10000);
     }
 
     private static void playEffects(Location l, String e) {
@@ -80,14 +83,14 @@ public class ElementSMP extends JavaPlugin implements Listener {
             l.getWorld().playSound(l, Sound.ENTITY_WARDEN_SONIC_BOOM, 1, 1);
         } else {
             l.getWorld().spawnParticle(Particle.FLAME, l, 30, 0.3, 0.3, 0.3, 0.05);
-            l.getWorld().playSound(l, Sound.ENTITY_GENERIC_EXPLODE, 0.6f, 1.2f);
+            l.getWorld().playSound(l, Sound.ENTITY_GENERIC_EXPLODE, 0.5f, 1.0f);
         }
     }
 
     private void applyPassives(Player p) {
         String e = playerElements.get(p.getUniqueId());
         if (e == null) return;
-        // FIX: Changed DAMAGE_RESISTANCE to RESISTANCE for modern compatibility
+        // Corrected PotionEffectType from DAMAGE_RESISTANCE to RESISTANCE
         if (e.equals("Void")) p.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 120, 0));
         if (e.equals("Fire")) p.addPotionEffect(new PotionEffect(PotionEffectType.FIRE_RESISTANCE, 120, 0));
     }
@@ -101,29 +104,56 @@ public class ElementSMP extends JavaPlugin implements Listener {
         }
     }
     
-    private static String getAbility1(String e) { return e.equals("Void") ? "Singularity" : "Pulse Strike"; }
-    private static String getAbility2(String e) { return e.equals("Void") ? "Abyssal Rift" : "Burst"; }
+    private static String getAbility1(String e) { return e.equals("Void") ? "Singularity" : "Pulse"; }
+    private static String getAbility2(String e) { return e.equals("Void") ? "Void Rift" : "Burst"; }
     public String[] getElementList() { return elements; }
 }
 
-class AdminCommands implements CommandExecutor {
+class AdminCommands implements CommandExecutor, TabCompleter {
     private final ElementSMP plugin;
     public AdminCommands(ElementSMP plugin) { this.plugin = plugin; }
 
     @Override
     public boolean onCommand(CommandSender s, Command c, String l, String[] a) {
-        if (!s.isOp()) {
-            s.sendMessage("§cOnly operators can use admin element commands!");
-            return true;
-        }
-
+        if (!s.isOp()) { s.sendMessage("§cNo permission."); return true; }
         if (a.length >= 2 && a[0].equalsIgnoreCase("set")) {
-            Player target = Bukkit.getPlayer(a[1]);
-            if (target == null) { s.sendMessage("§cPlayer not found."); return true; }
-            String newEl = (a.length > 2) ? a[2] : "Void";
-            ElementSMP.playerElements.put(target.getUniqueId(), newEl);
-            s.sendMessage("§aSet " + target.getName() + " to " + newEl);
+            Player t = Bukkit.getPlayer(a[1]);
+            if (t != null) {
+                ElementSMP.playerElements.put(t.getUniqueId(), a[2]);
+                s.sendMessage("§aSet " + t.getName() + " to " + a[2]);
+            }
             return true;
         }
-        
-        if (a.length >= 2 &&
+        return false;
+    }
+
+    @Override
+    public List<String> onTabComplete(CommandSender s, Command c, String alias, String[] a) {
+        if (!s.isOp()) return Collections.emptyList();
+        if (a.length == 1) return Arrays.asList("set", "reroll");
+        if (a.length == 3 && a[0].equalsIgnoreCase("set")) {
+            return Arrays.asList(plugin.getElementList()).stream()
+                .filter(el -> el.toLowerCase().startsWith(a[2].toLowerCase()))
+                .collect(Collectors.toList());
+        }
+        return null;
+    }
+}
+
+class AbilityHandler implements CommandExecutor {
+    public boolean onCommand(CommandSender s, Command c, String l, String[] a) {
+        if (s instanceof Player) ElementSMP.triggerAbility((Player) s, (a.length > 0 && a[0].equals("2")) ? 2 : 1);
+        return true;
+    }
+}
+
+class ControlToggle implements CommandExecutor {
+    public boolean onCommand(CommandSender s, Command c, String l, String[] a) {
+        if (!(s instanceof Player)) return true;
+        UUID id = ((Player) s).getUniqueId();
+        boolean cur = ElementSMP.useHotkeys.getOrDefault(id, false);
+        ElementSMP.useHotkeys.put(id, !cur);
+        s.sendMessage("§6§lControls: " + (!cur ? "§bHOTKEYS (F)" : "§eCOMMANDS"));
+        return true;
+    }
+}
