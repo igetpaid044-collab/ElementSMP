@@ -1,16 +1,16 @@
 name: ElementSMP
 version: 1.0
 main: me.kaloni.ElementSMP
-api-version: '1.21'
+api-version: '1.20'
 commands:
   ability:
     description: Trigger your power.
   controls:
-    description: Toggle swap-hand hotkeys.
+    description: Toggle swap-hand triggers.
   trust:
-    description: Trust a player.
+    description: Trust a teammate.
   untrust:
-    description: Untrust a player.
+    description: Untrust a teammate.
   give-reroll:
     permission: elementsmp.admin
   give-chaos:
