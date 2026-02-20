@@ -3,6 +3,7 @@ package me.kaloni;
 import net.md_5.bungee.api.ChatMessageType;
 import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.*;
+import org.bukkit.attribute.Attribute;
 import org.bukkit.command.*;
 import org.bukkit.entity.*;
 import org.bukkit.event.*;
@@ -13,7 +14,6 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.*;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.RayTraceResult;
-import org.bukkit.util.Vector;
 import java.util.*;
 
 public class ElementSMP extends JavaPlugin implements Listener {
@@ -98,7 +98,7 @@ public class ElementSMP extends JavaPlugin implements Listener {
             }
         }
 
-        spawnVoidGuard(p, center, EntityType.WARDEN, "§5§lVoid Sentinel");
+        spawnVoidGuard(p, center, EntityType.WARDEN, ChatColor.DARK_PURPLE + "" + ChatColor.BOLD + "Void Sentinel");
         for (Entity e : p.getNearbyEntities(radius, 10, radius)) {
             if (e instanceof Player target && !isTrusted(p, target) && target != p) {
                 target.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 200, 0));
@@ -111,6 +111,12 @@ public class ElementSMP extends JavaPlugin implements Listener {
     private static void spawnVoidGuard(Player owner, Location loc, EntityType type, String name) {
         LivingEntity guard = (LivingEntity) loc.getWorld().spawnEntity(loc, type);
         guard.setCustomName(name);
+        
+        // Corrected Attribute Variable Name
+        if (guard.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE) != null) {
+            guard.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE).setBaseValue(10.0);
+        }
+
         new BukkitRunnable() {
             int ticks = 0;
             @Override public void run() {
@@ -129,7 +135,7 @@ public class ElementSMP extends JavaPlugin implements Listener {
         int r = getInstance().getConfig().getInt("abilities.ice.freeze-radius", 10);
         for (Entity e : p.getNearbyEntities(r, 5, r)) {
             if (e instanceof Player target && !isTrusted(p, target) && target != p) {
-                // FIXED POTION NAMES
+                // FIXED POTION CONSTANTS
                 target.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 100, 255));
                 target.addPotionEffect(new PotionEffect(PotionEffectType.JUMP_BOOST, 100, 200));
             }
@@ -179,7 +185,7 @@ public class ElementSMP extends JavaPlugin implements Listener {
     }
 }
 
-// --- COMMAND HANDLERS ---
+// --- COMMAND CLASSES (UNCHANGED BUT INTEGRATED) ---
 class AdminElementHandler implements CommandExecutor {
     @Override public boolean onCommand(CommandSender s, Command c, String l, String[] args) {
         if (!s.isOp()) return true;
@@ -195,7 +201,6 @@ class AdminElementHandler implements CommandExecutor {
         return true;
     }
 }
-
 class AbilityHandler implements CommandExecutor { public boolean onCommand(CommandSender s, Command c, String l, String[] a) { if (s instanceof Player p) ElementSMP.triggerAbility(p, (a.length > 0 && a[0].equals("2")) ? 2 : 1); return true; } }
 class ControlToggle implements CommandExecutor { public boolean onCommand(CommandSender s, Command c, String l, String[] a) { if (s instanceof Player p) { ElementSMP.useHotkeys.put(p.getUniqueId(), !ElementSMP.useHotkeys.getOrDefault(p.getUniqueId(), false)); p.sendMessage("§bHotkeys Toggled."); } return true; } }
 class TrustCommand implements CommandExecutor { @Override public boolean onCommand(CommandSender s, Command c, String l, String[] a) { if (!(s instanceof Player p) || a.length == 0) return false; Player target = Bukkit.getPlayer(a[0]); if (target == null) return false; Set<UUID> trusted = ElementSMP.trustedPlayers.computeIfAbsent(p.getUniqueId(), k -> new HashSet<>()); if (c.getName().equalsIgnoreCase("trust")) { trusted.add(target.getUniqueId()); p.sendMessage("§aTrusted " + target.getName()); } else { trusted.remove(target.getUniqueId()); p.sendMessage("§cUntrusted " + target.getName()); } return true; } }
