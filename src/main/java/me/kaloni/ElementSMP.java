@@ -5,6 +5,7 @@ import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.command.*;
+import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.*;
 import org.bukkit.event.*;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
@@ -20,8 +21,8 @@ import java.util.*;
 
 public class ElementSMP extends JavaPlugin implements Listener {
 
+    // Data Storage
     public static HashMap<UUID, String> playerElements = new HashMap<>();
-    public static HashMap<UUID, String> secondaryElements = new HashMap<>();
     public static HashMap<UUID, Boolean> useHotkeys = new HashMap<>();
     public static HashMap<UUID, Long> cdAbility1 = new HashMap<>();
     public static HashMap<UUID, Long> cdAbility2 = new HashMap<>();
@@ -31,6 +32,8 @@ public class ElementSMP extends JavaPlugin implements Listener {
     @Override
     public void onEnable() {
         Bukkit.getPluginManager().registerEvents(this, this);
+        
+        // Command Registration
         getCommand("ability").setExecutor(new AbilityHandler());
         getCommand("controls").setExecutor(new ControlToggle());
         getCommand("give-reroll").setExecutor(new AdminItemCommand());
@@ -40,7 +43,7 @@ public class ElementSMP extends JavaPlugin implements Listener {
         getCommand("elementsmp").setExecutor(adminHandler);
         getCommand("elementsmp").setTabCompleter(adminHandler);
 
-        // Constant Particle/Passive Loop
+        // Core Loop: HUD, Particles, and Passives (Runs every 2 ticks)
         new BukkitRunnable() {
             double angle = 0;
             @Override
@@ -55,210 +58,167 @@ public class ElementSMP extends JavaPlugin implements Listener {
         }.runTaskTimer(this, 0L, 2L);
     }
 
-    private void applyPassives(Player p) {
-        String el = playerElements.getOrDefault(p.getUniqueId(), "Wind").toLowerCase();
-        if (el.equals("gravity")) p.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 45, 0, false, false));
-        if (el.equals("blood")) p.addPotionEffect(new PotionEffect(PotionEffectType.STRENGTH, 45, 0, false, false));
+    // --- ACTION BAR HUD LOGIC ---
+    private void updateActionBarHUD(Player p) {
+        UUID id = p.getUniqueId();
+        String el = playerElements.getOrDefault(id, "Wind");
+        
+        String ab1Name = getAbilityName(el, 1);
+        String ab1Status = getCooldownStatus(id, cdAbility1);
+        
+        String ab2Name = getAbilityName(el, 2);
+        String ab2Status = getCooldownStatus(id, cdAbility2);
+
+        // Format: ELEMENT | Ability 1: MM:SS | Ability 2: MM:SS
+        String message = String.format("§b§l%s §8| §e%s: %s §8| §6%s: %s", 
+                            el.toUpperCase(), ab1Name, ab1Status, ab2Name, ab2Status);
+        
+        p.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(message));
     }
 
-    private void spawnElementalHalo(Player p, double angle) {
-        String el = playerElements.getOrDefault(p.getUniqueId(), "Wind");
-        Location loc = p.getLocation().add(0, 2.1, 0);
-        double x = Math.cos(angle) * 0.7;
-        double z = Math.sin(angle) * 0.7;
-        loc.add(x, 0, z);
-
-        // Enhanced Particle Visibility
-        Particle part = getParticleFor(el);
-        if (part == Particle.DUST) {
-            p.getWorld().spawnParticle(Particle.DUST, loc, 3, 0.05, 0.05, 0.05, new Particle.DustOptions(getDustColor(el), 1.2f));
-        } else {
-            p.getWorld().spawnParticle(part, loc, 5, 0.02, 0.02, 0.02, 0.05);
-        }
+    private String getCooldownStatus(UUID id, HashMap<UUID, Long> map) {
+        long time = map.getOrDefault(id, 0L) - System.currentTimeMillis();
+        if (time <= 0) return "§a§lREADY";
+        
+        long totalSecs = time / 1000;
+        long mins = totalSecs / 60;
+        long secs = totalSecs % 60;
+        return String.format("§c%02d:%02d", mins, secs);
     }
 
-    private Particle getParticleFor(String el) {
+    private String getAbilityName(String el, int slot) {
         return switch (el.toLowerCase()) {
-            case "fire" -> Particle.FLAME;
-            case "nature" -> Particle.HAPPY_VILLAGER;
-            case "water", "ocean" -> Particle.BUBBLE;
-            case "gravity", "void" -> Particle.PORTAL;
-            case "lightning" -> Particle.ELECTRIC_SPARK;
-            default -> Particle.DUST;
+            case "nature" -> (slot == 1) ? "Grapple" : "Overgrowth";
+            case "gravity" -> (slot == 1) ? "Zero-G" : "Meteor";
+            case "blood" -> (slot == 1) ? "Siphon" : "Rage";
+            default -> "Power " + slot;
         };
     }
 
-    private Color getDustColor(String el) {
-        return switch (el.toLowerCase()) {
-            case "blood" -> Color.RED;
-            case "ice" -> Color.AQUA;
-            case "wind" -> Color.WHITE;
-            case "earth" -> Color.MAROON;
-            default -> Color.GRAY;
-        };
-    }
-
+    // --- ABILITY LOGIC ---
     public static void triggerAbility(Player p, int num) {
         UUID id = p.getUniqueId();
         String el = playerElements.getOrDefault(id, "Wind").toLowerCase();
         HashMap<UUID, Long> cdMap = (num == 1) ? cdAbility1 : cdAbility2;
 
         if (cdMap.getOrDefault(id, 0L) > System.currentTimeMillis()) {
-            p.sendMessage("§c" + (num == 1 ? "A1" : "A2") + " Cooldown: " + ((cdMap.get(id) - System.currentTimeMillis()) / 1000) + "s");
+            p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 1f, 1f);
             return;
         }
 
-        if (num == 1 && el.equals("nature")) {
-            performNatureGrapple(p);
-            cdMap.put(id, System.currentTimeMillis() + 120000);
-        } else if (num == 2 && el.equals("gravity")) {
-            performGravityMeteor(p, (JavaPlugin) Bukkit.getPluginManager().getPlugin("ElementSMP"));
-            cdMap.put(id, System.currentTimeMillis() + 60000);
+        boolean success = false;
+        if (num == 1) {
+            if (el.equals("nature")) { performNatureGrapple(p); success = true; cdMap.put(id, System.currentTimeMillis() + 15000); }
+            // Add other Element 1s here
+        } else {
+            if (el.equals("gravity")) { performGravityMeteor(p); success = true; cdMap.put(id, System.currentTimeMillis() + 60000); }
+            // Add other Element 2s here
         }
+
+        if (success) p.playSound(p.getLocation(), Sound.ENTITY_ILLUSIONER_CAST_SPELL, 1f, 1f);
     }
 
     private static void performNatureGrapple(Player p) {
-        RayTraceResult result = p.getWorld().rayTraceBlocks(p.getEyeLocation(), p.getEyeLocation().getDirection(), 35);
+        RayTraceResult result = p.getWorld().rayTraceBlocks(p.getEyeLocation(), p.getEyeLocation().getDirection(), 30);
         if (result != null && result.getHitBlock() != null) {
             Location hit = result.getHitPosition().toLocation(p.getWorld());
-            
-            // DRAW VISIBLE VINE
-            Vector start = p.getEyeLocation().toVector();
-            Vector end = hit.toVector();
-            double dist = start.distance(end);
-            Vector dir = end.subtract(start).normalize();
-            
-            for (double i = 0; i < dist; i += 0.3) {
-                p.getWorld().spawnParticle(Particle.HAPPY_VILLAGER, start.clone().add(dir.clone().multiply(i)).toLocation(p.getWorld()), 2, 0.1, 0.1, 0.1, 0.02);
-                p.getWorld().spawnParticle(Particle.COMPOSTER, start.clone().add(dir.clone().multiply(i)).toLocation(p.getWorld()), 1, 0.05, 0.05, 0.05, 0);
-            }
-
-            Vector pull = hit.toVector().subtract(p.getLocation().toVector()).normalize().multiply(2.5);
-            p.setVelocity(pull.setY(0.7));
-            p.playSound(p.getLocation(), Sound.BLOCK_VINE_STEP, 1.5f, 0.8f);
-        } else {
-            p.sendMessage("§cToo far away!");
+            Vector dir = hit.toVector().subtract(p.getEyeLocation().toVector()).normalize();
+            p.setVelocity(dir.multiply(2.2).setY(0.6));
+            p.getWorld().spawnParticle(Particle.HAPPY_VILLAGER, hit, 20, 0.5, 0.5, 0.5, 0.1);
         }
     }
 
-    private static void performGravityMeteor(Player p, JavaPlugin plugin) {
-        List<Block> tempBlocks = new ArrayList<>();
-        for (Entity e : p.getNearbyEntities(20, 20, 20)) {
-            if (e instanceof Player target && !target.equals(p)) {
-                Location loc = target.getLocation();
-                for (int x = -1; x <= 1; x++) {
-                    for (int z = -1; z <= 1; z++) {
-                        for (int y = 0; y <= 2; y++) {
-                            if (Math.abs(x) == 1 || Math.abs(z) == 1) {
-                                Block b = loc.clone().add(x, y, z).getBlock();
-                                if (b.getType().isAir()) { b.setType(Material.COBBLESTONE); tempBlocks.add(b); }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        new BukkitRunnable() { @Override public void run() { for (Block b : tempBlocks) b.setType(Material.AIR); } }.runTaskLater(plugin, 140L);
-
-        new BukkitRunnable() {
-            int timer = 0;
-            @Override public void run() {
-                if (timer > 10) { this.cancel(); return; }
-                for (Entity e : p.getNearbyEntities(20, 20, 20)) {
-                    if (e instanceof LivingEntity && !e.equals(p)) {
-                        p.getWorld().spawnParticle(Particle.LARGE_SMOKE, e.getLocation().add(0, 10, 0), 10, 0.5, 0.5, 0.5, 0.1);
-                        FallingBlock rock = e.getWorld().spawnFallingBlock(e.getLocation().add(0, 10, 0), Material.STONE.createBlockData());
-                        rock.setDropItem(false); rock.setHurtEntities(true);
-                        rock.setMetadata("meteor", new org.bukkit.metadata.FixedMetadataValue(plugin, true));
-                    }
-                }
-                timer++;
-            }
-        }.runTaskTimer(plugin, 0L, 10L);
+    private static void performGravityMeteor(Player p) {
+        p.sendMessage("§7The sky darkens...");
+        // Placeholder for Meteor logic
     }
 
-    @EventHandler public void onMeteorHit(EntityDamageByEntityEvent e) {
-        if (e.getDamager() instanceof FallingBlock rock && rock.hasMetadata("meteor")) e.setDamage(4.0);
-    }
-
-    private void updateActionBarHUD(Player p) {
-        String el = playerElements.getOrDefault(p.getUniqueId(), "Wind");
-        p.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent("§b§lElement: §f" + el.toUpperCase()));
-    }
-
-    @EventHandler public void onReroll(PlayerInteractEvent e) {
-        if (e.getItem() != null && e.getItem().getType() == Material.NETHER_STAR) {
+    // --- REROLL SYSTEM ---
+    @EventHandler
+    public void onReroll(PlayerInteractEvent e) {
+        ItemStack item = e.getItem();
+        if (item != null && item.getType() == Material.NETHER_STAR && item.hasItemMeta()) {
             e.setCancelled(true);
-            boolean isChaos = e.getItem().getItemMeta().getDisplayName().contains("Chaos");
-            startRerollAnimation(e.getPlayer(), isChaos);
-            e.getItem().setAmount(e.getItem().getAmount() - 1);
+            boolean isChaos = item.getItemMeta().getDisplayName().contains("CHAOS");
+            startRerollAnimation(e.getPlayer());
+            item.setAmount(item.getAmount() - 1);
         }
     }
 
-    @EventHandler public void onFKey(PlayerSwapHandItemsEvent event) { 
-        if (useHotkeys.getOrDefault(event.getPlayer().getUniqueId(), false)) {
-            event.setCancelled(true);
-            triggerAbility(event.getPlayer(), event.getPlayer().isSneaking() ? 2 : 1);
-        }
-    }
-
-    public void startRerollAnimation(Player p, boolean forceChaos) {
+    public void startRerollAnimation(Player p) {
         new BukkitRunnable() {
             int ticks = 0;
             @Override public void run() {
-                if (ticks >= 40) {
+                if (ticks >= 30) {
                     String finalEl = elementList.get(new Random().nextInt(elementList.size()));
                     playerElements.put(p.getUniqueId(), finalEl);
-                    if (forceChaos) {
-                        secondaryElements.put(p.getUniqueId(), "Gravity");
-                        Bukkit.broadcastMessage("§5§lCHAOS! §d" + p.getName() + " has awakened Dual Powers!");
-                    }
-                    p.sendTitle("§a Awakened:", "§2" + finalEl, 10, 40, 10);
+                    p.sendTitle("§6§lNEW ELEMENT", "§f" + finalEl, 10, 40, 10);
+                    p.playSound(p.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f);
                     this.cancel(); return;
                 }
-                p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_HAT, 1, 2);
+                p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BIT, 1f, 1f + (ticks * 0.05f));
                 ticks++;
             }
         }.runTaskTimer(this, 0L, 2L);
     }
+
+    // --- UTILS & PASSIVES ---
+    private void applyPassives(Player p) {
+        String el = playerElements.getOrDefault(p.getUniqueId(), "Wind").toLowerCase();
+        if (el.equals("gravity")) p.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 45, 0, false, false));
+    }
+
+    private void spawnElementalHalo(Player p, double angle) {
+        Location loc = p.getLocation().add(0, 2.1, 0);
+        loc.add(Math.cos(angle) * 0.7, 0, Math.sin(angle) * 0.7);
+        p.getWorld().spawnParticle(Particle.DUST, loc, 1, new Particle.DustOptions(Color.AQUA, 1f));
+    }
+
+    @EventHandler
+    public void onFKey(PlayerSwapHandItemsEvent e) { 
+        if (useHotkeys.getOrDefault(e.getPlayer().getUniqueId(), false)) {
+            e.setCancelled(true);
+            triggerAbility(e.getPlayer(), e.getPlayer().isSneaking() ? 2 : 1);
+        }
+    }
 }
 
-// --- UPDATED COMMAND HANDLER WITH TAB COMPLETION ---
+// --- COMMAND CLASSES ---
+class AdminItemCommand implements CommandExecutor {
+    @Override public boolean onCommand(CommandSender s, Command c, String l, String[] a) {
+        if (!(s instanceof Player p) || !s.isOp()) return true;
+        ItemStack star = new ItemStack(Material.NETHER_STAR);
+        ItemMeta m = star.getItemMeta();
+        if (c.getName().contains("chaos")) {
+            m.setDisplayName("§5§l« §d§lCHAOS REROLL §5§l»");
+            m.setCustomModelData(1001);
+        } else {
+            m.setDisplayName("§b§l« §3§lELEMENTAL REROLL §b§l»");
+            m.setCustomModelData(1000);
+        }
+        star.setItemMeta(m); p.getInventory().addItem(star); return true;
+    }
+}
+
 class AdminElementHandler implements CommandExecutor, TabCompleter {
     private final ElementSMP plugin;
-    private final List<String> elements = Arrays.asList("Wind", "Fire", "Water", "Earth", "Lightning", "Void", "Ice", "Nature", "Blood", "Ocean", "Psychic", "Gravity");
-    
     public AdminElementHandler(ElementSMP plugin) { this.plugin = plugin; }
-
     @Override public boolean onCommand(CommandSender s, Command c, String l, String[] args) {
-        if (!s.isOp()) return true;
-        if (args.length >= 2 && args[0].equalsIgnoreCase("set")) {
+        if (s.isOp() && args.length >= 2 && args[0].equalsIgnoreCase("set")) {
             Player t = (args.length == 3) ? Bukkit.getPlayer(args[1]) : (s instanceof Player ? (Player)s : null);
-            String el = (args.length == 3) ? args[2] : args[1];
             if (t != null) {
-                ElementSMP.playerElements.put(t.getUniqueId(), el);
-                s.sendMessage("§aSet " + t.getName() + " to " + el);
+                ElementSMP.playerElements.put(t.getUniqueId(), args[args.length - 1]);
+                s.sendMessage("§aElement set for " + t.getName());
             }
         }
         return true;
     }
-
-    @Override public List<String> onTabComplete(CommandSender s, Command c, String a, String[] args) {
-        if (args.length == 1) return Collections.singletonList("set");
-        if (args.length == 2 && args[0].equalsIgnoreCase("set")) return null; // Returns online players
-        if (args.length == 3 && args[0].equalsIgnoreCase("set")) return elements;
-        return Collections.emptyList();
+    @Override public List<String> onTabComplete(CommandSender s, Command cmd, String a, String[] args) {
+        if (args.length == 1) return List.of("set");
+        if (args.length == 3) return Arrays.asList("Nature", "Gravity", "Fire", "Ice", "Blood");
+        return null;
     }
 }
 
-class AdminItemCommand implements CommandExecutor {
-    @Override public boolean onCommand(CommandSender s, Command c, String l, String[] args) {
-        if (!(s instanceof Player p) || !s.isOp()) return true;
-        ItemStack star = new ItemStack(Material.NETHER_STAR);
-        ItemMeta m = star.getItemMeta();
-        m.setDisplayName(c.getName().equals("give-chaos") ? "§5§lChaos Reroll" : "§b§lElemental Reroll");
-        star.setItemMeta(m); p.getInventory().addItem(star); return true;
-    }
-}
 class AbilityHandler implements CommandExecutor { public boolean onCommand(CommandSender s, Command c, String l, String[] a) { if (s instanceof Player p) ElementSMP.triggerAbility(p, (a.length > 0 && a[0].equals("2")) ? 2 : 1); return true; } }
-class ControlToggle implements CommandExecutor { public boolean onCommand(CommandSender s, Command c, String l, String[] a) { if (s instanceof Player p) { ElementSMP.useHotkeys.put(p.getUniqueId(), !ElementSMP.useHotkeys.getOrDefault(p.getUniqueId(), false)); p.sendMessage("§bHotkeys Toggled!"); } return true; } }
+class ControlToggle implements CommandExecutor { public boolean onCommand(CommandSender s, Command c, String l, String[] a) { if (s instanceof Player p) { ElementSMP.useHotkeys.put(p.getUniqueId(), !ElementSMP.useHotkeys.getOrDefault(p.getUniqueId(), false)); p.sendMessage("§bHotkeys: " + (ElementSMP.useHotkeys.get(p.getUniqueId()) ? "§aON" : "§cOFF")); } return true; } }
