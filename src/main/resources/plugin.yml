@@ -1,22 +1,19 @@
 name: ElementSMP
-version: 1.2
+version: 1.0
 main: me.kaloni.ElementSMP
 api-version: '1.20'
-author: Kaloni
-description: Custom Elemental SMP with dual-cooldown Action Bar HUD.
-
 commands:
   ability:
-    description: Use ability 1 or 2.
-    usage: /ability [1|2]
+    description: Use your power.
   controls:
-    description: Toggle F-key hotkeys.
+    description: Toggle swap-hand triggers.
+  trust:
+    description: Trust a teammate.
+  untrust:
+    description: Untrust a teammate.
   give-reroll:
-    description: Get a standard Reroll Star.
     permission: op
   give-chaos:
-    description: Get a Chaos Reroll Star.
     permission: op
   elementsmp:
-    description: Admin element setter.
     permission: op
