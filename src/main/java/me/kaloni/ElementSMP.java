@@ -4,114 +4,192 @@ import net.md_5.bungee.api.ChatMessageType;
 import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.*;
 import org.bukkit.block.Block;
-import org.bukkit.block.data.BlockData;
 import org.bukkit.command.*;
+import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.*;
 import org.bukkit.event.*;
-import org.bukkit.event.entity.*;
+import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.player.*;
-import org.bukkit.inventory.*;
-import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
-import org.bukkit.potion.*;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitRunnable;
-import org.bukkit.util.Vector;
 import org.bukkit.util.RayTraceResult;
 
 import java.util.*;
 
-public class ElementSMP extends JavaPlugin implements Listener {
+public class ElementSMP extends JavaPlugin implements Listener, CommandExecutor, TabCompleter {
 
-    // Global Maps
     public static final HashMap<UUID, String> playerElements = new HashMap<>();
     public static final HashMap<UUID, Boolean> hotkeysEnabled = new HashMap<>();
-    public static final HashMap<UUID, Set<UUID>> trustedPlayers = new HashMap<>();
-    public static final HashMap<UUID, Long> cd1 = new HashMap<>(), cd2 = new HashMap<>(), djCD = new HashMap<>();
-    
-    // Domain Tracking
-    public static final HashMap<UUID, Location> activeDomains = new HashMap<>();
-    public static final HashMap<Location, List<Block>> domainBlocks = new HashMap<>();
-
-    private final List<String> elements = Arrays.asList(
-            "Wind", "Fire", "Water", "Earth", "Lightning", "Void", "Ice", "Nature", "Blood", "Gravity"
-    );
+    public static final HashMap<UUID, Long> cd1 = new HashMap<>(), cd2 = new HashMap<>();
+    private final Set<UUID> windJumpers = new HashSet<>();
+    private final Set<Block> domainBlocks = new HashSet<>();
+    private final HashMap<UUID, Location> trappedPlayers = new HashMap<>();
+    private final List<String> elements = Arrays.asList("wind", "fire", "ice", "nature", "lightning", "void", "gravity", "water", "blood", "earth");
 
     @Override
     public void onEnable() {
+        saveDefaultConfig();
+        loadData();
         Bukkit.getPluginManager().registerEvents(this, this);
-        registerCommands();
+        
+        String[] cmds = {"elemental", "ability", "controls"};
+        for (String cmd : cmds) {
+            getCommand(cmd).setExecutor(this);
+            getCommand(cmd).setTabCompleter(this);
+        }
 
-        // Master HUD and Passive Task
+        // Main Processor: HUD, Passives, Trails, and Traps
         new BukkitRunnable() {
             @Override
             public void run() {
                 for (Player p : Bukkit.getOnlinePlayers()) {
                     updateHUD(p);
                     handlePassives(p);
+                    if (trappedPlayers.containsKey(p.getUniqueId())) checkTraps(p);
                 }
             }
-        }.runTaskTimer(this, 0L, 10L);
+        }.runTaskTimer(this, 0L, 2L);
     }
 
-    private void registerCommands() {
-        getCommand("controls").setExecutor(new ControlToggle());
-        getCommand("trust").setExecutor(new TrustHandler());
-        getCommand("untrust").setExecutor(new TrustHandler());
-        getCommand("elemental").setExecutor(new HelpCommand());
-        getCommand("elementsmp").setExecutor(new AdminHandler());
-        getCommand("give-reroll").setExecutor(new ItemHandler());
-        getCommand("give-chaos").setExecutor(new ItemHandler());
+    @Override
+    public void onDisable() { saveData(); }
+
+    // --- DATA MANAGEMENT ---
+    private void saveData() {
+        ConfigurationSection s = getConfig().createSection("players");
+        playerElements.forEach((uuid, el) -> s.set(uuid.toString(), el));
+        saveConfig();
     }
 
-    public String getElement(Player p) {
-        return playerElements.getOrDefault(p.getUniqueId(), "Wind").toLowerCase();
+    private void loadData() {
+        ConfigurationSection s = getConfig().getConfigurationSection("players");
+        if (s != null) s.getKeys(false).forEach(k -> playerElements.put(UUID.fromString(k), s.getString(k)));
     }
 
     // --- HUD SYSTEM ---
     private void updateHUD(Player p) {
-        String el = getElement(p).toUpperCase();
-        UUID id = p.getUniqueId();
+        String el = getElement(p);
+        String color = getElementColor(el);
         long now = System.currentTimeMillis();
+        String t1 = formatCD(cd1.getOrDefault(p.getUniqueId(), 0L) - now);
+        String t2 = formatCD(cd2.getOrDefault(p.getUniqueId(), 0L) - now);
 
-        String ab1Name = getAbilityName(el, 1);
-        String ab2Name = getAbilityName(el, 2);
-        String t1 = formatCD(cd1.getOrDefault(id, 0L) - now);
-        String t2 = formatCD(cd2.getOrDefault(id, 0L) - now);
-
-        // Required Format: (Element) (AB1:Name(00:00)) (AB2:Name(00:00))
-        String hud = String.format("§6§l(%s) §b(AB1:%s(%s)) §d(AB2:%s(%s))", el, ab1Name, t1, ab2Name, t2);
+        String hud = String.format("%s§l(%s) §b(%s %s)  §d(%s %s)", 
+            color, el.toUpperCase(), getAbilityName(el, 1), t1, getAbilityName(el, 2), t2);
         p.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(hud));
     }
 
-    private String formatCD(long ms) {
-        if (ms <= 0) return "§aREADY";
-        return String.format("%02d:%02d", (ms/1000)/60, (ms/1000)%60);
+    private String getElementColor(String el) {
+        return switch (el) {
+            case "fire" -> "§c"; case "ice" -> "§b"; case "nature" -> "§2";
+            case "lightning" -> "§e"; case "void" -> "§8"; case "gravity" -> "§5";
+            case "water" -> "§3"; case "blood" -> "§4"; case "earth" -> "§6"; default -> "§f";
+        };
     }
 
     private String getAbilityName(String el, int slot) {
-        el = el.toLowerCase();
-        if (slot == 1) {
-            if (el.contains("nature")) return "Vine";
-            if (el.contains("void")) return "Silence";
-            return "Dash";
-        }
-        return (el.contains("void") || el.contains("gravity")) ? "Domain" : "Ultimate";
+        if (slot == 1) return switch(el) {
+            case "nature" -> "Vine"; case "fire" -> "Burst"; case "ice" -> "Freeze"; 
+            case "blood" -> "Siphon"; case "earth" -> "Shield"; default -> "Dash";
+        };
+        return (el.equals("void") || el.equals("gravity")) ? "Domain" : "Ultimate";
     }
 
-    // --- COMBAT GUARD ---
+    private String formatCD(long ms) {
+        return ms <= 0 ? "§aREADY" : String.format("§6%02d:%02d", (ms/1000)/60, (ms/1000)%60);
+    }
+
+    // --- PASSIVES & MECHANICS ---
+    private void handlePassives(Player p) {
+        String el = getElement(p);
+        if (el.equals("wind") && p.isOnGround()) p.setAllowFlight(true);
+        
+        // Apply Continuous Effects
+        applyEffect(p, PotionEffectType.SPEED, el.equals("lightning") ? 1 : -1);
+        applyEffect(p, PotionEffectType.INVISIBILITY, el.equals("void") ? 0 : -1);
+        applyEffect(p, PotionEffectType.SLOW_FALLING, el.equals("gravity") ? 0 : -1);
+        applyEffect(p, PotionEffectType.WATER_BREATHING, el.equals("water") ? 0 : -1);
+        applyEffect(p, PotionEffectType.RESISTANCE, el.equals("earth") ? 0 : -1);
+        applyEffect(p, PotionEffectType.STRENGTH, el.equals("blood") ? 0 : -1);
+
+        // Wind Trail
+        if (windJumpers.contains(p.getUniqueId())) {
+            if (p.isOnGround()) windJumpers.remove(p.getUniqueId());
+            else p.getWorld().spawnParticle(Particle.CLOUD, p.getLocation(), 3, 0.1, 0.1, 0.1, 0.02);
+        }
+    }
+
+    private void applyEffect(Player p, PotionEffectType type, int amp) {
+        if (amp >= 0) p.addPotionEffect(new PotionEffect(type, 40, amp, false, false));
+    }
+
     @EventHandler
-    public void onQuit(PlayerQuitEvent e) {
-        Player p = e.getPlayer();
-        for (Location loc : activeDomains.values()) {
-            if (p.getLocation().distance(loc) < 15) {
-                p.setHealth(0); // Kill combat loggers inside domains
-                Bukkit.broadcastMessage("§c" + p.getName() + " died for logging out in a Domain!");
-                break;
+    public void onDamage(EntityDamageEvent e) {
+        if (!(e.getEntity() instanceof Player p)) return;
+        String el = getElement(p);
+        if (e.getCause() == EntityDamageEvent.DamageCause.FALL && el.equals("wind")) e.setCancelled(true);
+        if (e.getCause() == EntityDamageEvent.DamageCause.FIRE && el.equals("fire")) e.setCancelled(true);
+    }
+
+    // --- DOMAIN TRAP SYSTEM ---
+    private void checkTraps(Player p) {
+        Location center = trappedPlayers.get(p.getUniqueId());
+        if (p.getLocation().distance(center) > 5.5) {
+            p.teleport(center);
+            p.sendMessage("§c§lYOU ARE TETHERED TO THE DOMAIN!");
+        }
+    }
+
+    private void spawnDomain(Location center, String el) {
+        Material mat = el.equals("void") ? Material.BLACK_STAINED_GLASS : Material.PURPLE_STAINED_GLASS;
+        List<Block> cageBlocks = new ArrayList<>();
+        List<UUID> localTrapped = new ArrayList<>();
+
+        for (Player t : Bukkit.getOnlinePlayers()) {
+            if (t.getLocation().distance(center) <= 6) {
+                trappedPlayers.put(t.getUniqueId(), center.clone());
+                localTrapped.add(t.getUniqueId());
             }
         }
+
+        for (int x = -6; x <= 6; x++) {
+            for (int y = -6; y <= 6; y++) {
+                for (int z = -6; z <= 6; z++) {
+                    if (center.clone().add(x,y,z).distance(center) > 5.5 && center.clone().add(x,y,z).distance(center) < 6.5) {
+                        Block b = center.clone().add(x,y,z).getBlock();
+                        if (b.getType() == Material.AIR) { b.setType(mat); domainBlocks.add(b); cageBlocks.add(b); }
+                    }
+                }
+            }
+        }
+
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                for (Block b : cageBlocks) { b.setType(Material.AIR); domainBlocks.remove(b); }
+                for (UUID id : localTrapped) trappedPlayers.remove(id);
+            }
+        }.runTaskLater(this, 200L);
     }
 
+    @EventHandler
+    public void onBreak(BlockBreakEvent e) { if (domainBlocks.contains(e.getBlock())) e.setCancelled(true); }
+
     // --- ABILITIES ---
+    @EventHandler
+    public void onFly(PlayerToggleFlightEvent e) {
+        Player p = e.getPlayer();
+        if (p.getGameMode() == GameMode.SURVIVAL && getElement(p).equals("wind")) {
+            e.setCancelled(true); p.setAllowFlight(false);
+            p.setVelocity(p.getLocation().getDirection().multiply(1.4).setY(0.8));
+            p.playSound(p.getLocation(), Sound.ENTITY_WIND_CHARGE_WIND_BURST, 1f, 1.2f);
+            windJumpers.add(p.getUniqueId());
+        }
+    }
+
     @EventHandler
     public void onSwap(PlayerSwapHandItemsEvent e) {
         if (!hotkeysEnabled.getOrDefault(e.getPlayer().getUniqueId(), true)) return;
@@ -120,127 +198,50 @@ public class ElementSMP extends JavaPlugin implements Listener {
     }
 
     public void triggerAbility(Player p, int slot) {
-        String el = getElement(p);
-        UUID id = p.getUniqueId();
-        long now = System.currentTimeMillis();
-
-        if (slot == 1 && cd1.getOrDefault(id, 0L) > now) return;
-        if (slot == 2 && cd2.getOrDefault(id, 0L) > now) return;
+        String el = getElement(p); long now = System.currentTimeMillis();
+        if ((slot == 1 && cd1.getOrDefault(p.getUniqueId(), 0L) > now) || (slot == 2 && cd2.getOrDefault(p.getUniqueId(), 0L) > now)) return;
 
         if (slot == 1) {
-            // NATURE: EMERALD VINE
-            if (el.contains("nature")) {
-                RayTraceResult res = p.getWorld().rayTraceBlocks(p.getEyeLocation(), p.getEyeLocation().getDirection(), 30);
-                if (res != null) {
-                    Location hit = res.getHitPosition().toLocation(p.getWorld());
-                    BlockData emerald = Material.EMERALD_BLOCK.createBlockData(); // 1.21 Fix
-                    Vector v = hit.toVector().subtract(p.getEyeLocation().toVector()).normalize();
-                    for (double d = 0; d < p.getLocation().distance(hit); d += 0.5) {
-                        p.getWorld().spawnParticle(Particle.BLOCK, p.getEyeLocation().add(v.clone().multiply(d)), 1, emerald);
-                    }
-                    p.setVelocity(v.multiply(1.8).setY(v.getY() * 0.4 + 0.4));
-                    p.playSound(p.getLocation(), Sound.ENTITY_LEASH_KNOT_PLACE, 1f, 1.2f);
-                    cd1.put(id, now + 5000);
+            if (el.equals("nature")) {
+                RayTraceResult r = p.getWorld().rayTraceBlocks(p.getEyeLocation(), p.getEyeLocation().getDirection(), 25);
+                if (r != null) {
+                    p.setVelocity(r.getHitPosition().toLocation(p.getWorld()).toVector().subtract(p.getEyeLocation().toVector()).normalize().multiply(1.8).setY(0.6));
+                    p.getWorld().spawnParticle(Particle.BLOCK, r.getHitPosition().toLocation(p.getWorld()), 30, Material.EMERALD_BLOCK.createBlockData());
                 }
+            } else p.setVelocity(p.getLocation().getDirection().multiply(1.5).setY(0.2));
+            cd1.put(p.getUniqueId(), now + 5000);
+        } else {
+            if (el.equals("void") || el.equals("gravity")) {
+                p.sendTitle("§d§lDOMAIN EXPANSION", "§7Infinite Information", 10, 60, 10);
+                spawnDomain(p.getLocation(), el);
             }
-        } 
-        else if (slot == 2) {
-            // DOMAIN EXPANSION: CAGE & SHATTER
-            if (el.contains("void") || el.contains("gravity")) {
-                Location center = p.getLocation();
-                activeDomains.put(id, center);
-                p.sendTitle("§d§lDOMAIN EXPANSION", "§7Infinite Darkness", 10, 50, 10);
-                p.getWorld().playSound(center, Sound.ENTITY_WITHER_SPAWN, 1f, 0.5f);
-                
-                List<Block> cage = new ArrayList<>();
-                Material glassType = el.contains("void") ? Material.BLACK_STAINED_GLASS : Material.PURPLE_STAINED_GLASS;
-                
-                for (int x = -7; x <= 7; x++) {
-                    for (int y = -7; y <= 7; y++) {
-                        for (int z = -7; z <= 7; z++) {
-                            double d = Math.sqrt(x*x + y*y + z*z);
-                            if (d > 6.5 && d < 7.5) {
-                                Block b = center.clone().add(x, y, z).getBlock();
-                                if (b.getType().isAir()) {
-                                    b.setType(glassType);
-                                    cage.add(b);
-                                }
-                            }
-                        }
-                    }
-                }
-                domainBlocks.put(center, cage);
-
-                // Domain End: Cinematic Shatter
-                new BukkitRunnable() {
-                    public void run() {
-                        activeDomains.remove(id);
-                        for (Block b : cage) {
-                            if (b.getType() == glassType) {
-                                p.getWorld().spawnParticle(Particle.BLOCK, b.getLocation(), 5, glassType.createBlockData());
-                                b.setType(Material.AIR);
-                            }
-                        }
-                        p.getWorld().playSound(center, Sound.BLOCK_GLASS_BREAK, 1f, 0.5f);
-                        domainBlocks.remove(center);
-                    }
-                }.runTaskLater(this, 300L); // 15 Seconds
-                cd2.put(id, now + 60000);
-            }
+            cd2.put(p.getUniqueId(), now + 60000);
         }
     }
 
-    private void handlePassives(Player p) {
-        String el = getElement(p);
-        if (el.contains("lightning")) p.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 40, 1, false, false));
-        if (el.contains("earth")) p.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 40, 1, false, false));
-        if (el.contains("wind") && p.getGameMode() == GameMode.SURVIVAL && !djCD.containsKey(p.getUniqueId())) {
-            p.setAllowFlight(true);
-        }
-    }
-
-    @EventHandler
-    public void onReroll(PlayerInteractEvent e) {
-        ItemStack item = e.getItem();
-        if (item == null || item.getType() != Material.NETHER_STAR) return;
-        Player p = e.getPlayer();
-        boolean chaos = item.getItemMeta().getDisplayName().contains("Chaos");
-        item.setAmount(item.getAmount() - 1);
-
-        new BukkitRunnable() {
-            int t = 0;
-            public void run() {
-                if (t++ < 20) {
-                    p.sendTitle("§bRolling...", "§f" + elements.get(new Random().nextInt(10)).toUpperCase(), 0, 5, 0);
-                    p.playSound(p.getLocation(), Sound.UI_BUTTON_CLICK, 0.5f, 1f + (t*0.05f));
-                } else {
-                    String res = chaos ? elements.get(new Random().nextInt(10)) + "-" + elements.get(new Random().nextInt(10)) : elements.get(new Random().nextInt(10));
-                    playerElements.put(p.getUniqueId(), res);
-                    p.sendTitle("§6" + res.toUpperCase(), "§eElement Bound!", 10, 40, 10);
-                    this.cancel();
-                }
-            }
-        }.runTaskTimer(this, 0L, 2L);
-    }
-
-    private boolean isTrusted(Player p, Entity e) {
-        if (!(e instanceof Player target)) return false;
-        return trustedPlayers.getOrDefault(p.getUniqueId(), new HashSet<>()).contains(target.getUniqueId()) || p.equals(target);
-    }
-}
-
-// Support Commands
-class TrustHandler implements CommandExecutor {
+    // --- COMMANDS ---
+    @Override
     public boolean onCommand(CommandSender s, Command c, String l, String[] a) {
-        if (!(s instanceof Player p) || a.length == 0) return false;
-        Player t = Bukkit.getPlayer(a[0]); if (t == null) return true;
-        Set<UUID> set = ElementSMP.trustedPlayers.computeIfAbsent(p.getUniqueId(), k -> new HashSet<>());
-        if (c.getName().equalsIgnoreCase("trust")) set.add(t.getUniqueId()); else set.remove(t.getUniqueId());
-        p.sendMessage("§7Trust updated for " + t.getName());
+        if (!(s instanceof Player p)) return true;
+        if (c.getName().equalsIgnoreCase("elemental") && s.isOp() && a.length >= 3) {
+            Player t = Bukkit.getPlayer(a[1]);
+            if (t != null) { playerElements.put(t.getUniqueId(), a[2].toLowerCase()); p.sendMessage("§aSuccess!"); }
+        } else if (c.getName().equalsIgnoreCase("ability")) {
+            triggerAbility(p, (a.length > 0 && a[0].equals("2")) ? 2 : 1);
+        } else if (c.getName().equalsIgnoreCase("controls")) {
+            boolean b = !hotkeysEnabled.getOrDefault(p.getUniqueId(), true);
+            hotkeysEnabled.put(p.getUniqueId(), b);
+            p.sendMessage("§bHotkeys: " + (b ? "§aON" : "§cOFF"));
+        }
         return true;
     }
+
+    @Override
+    public List<String> onTabComplete(CommandSender s, Command c, String l, String[] a) {
+        if (a.length == 1 && c.getName().equals("elemental")) return Collections.singletonList("set");
+        if (a.length == 3) return elements;
+        return Arrays.asList("1", "2");
+    }
+
+    public String getElement(Player p) { return playerElements.getOrDefault(p.getUniqueId(), "wind"); }
 }
-class AdminHandler implements CommandExecutor { public boolean onCommand(CommandSender s, Command c, String l, String[] a) { if (s.isOp() && a.length >= 3) { Player t = Bukkit.getPlayer(a[1]); if (t != null) ElementSMP.playerElements.put(t.getUniqueId(), a[2]); } return true; } }
-class ItemHandler implements CommandExecutor { public boolean onCommand(CommandSender s, Command c, String l, String[] a) { if (s instanceof Player p && s.isOp()) { ItemStack i = new ItemStack(Material.NETHER_STAR); ItemMeta m = i.getItemMeta(); m.setDisplayName(c.getName().contains("chaos") ? "§5§lChaos Reroll" : "§b§lElemental Reroll"); i.setItemMeta(m); p.getInventory().addItem(i); } return true; } }
-class ControlToggle implements CommandExecutor { public boolean onCommand(CommandSender s, Command c, String l, String[] a) { if (s instanceof Player p) { boolean b = !ElementSMP.hotkeysEnabled.getOrDefault(p.getUniqueId(), true); ElementSMP.hotkeysEnabled.put(p.getUniqueId(), b); p.sendMessage("§bHotkeys: " + (b ? "§aON" : "§cOFF")); } return true; } }
-class HelpCommand implements CommandExecutor { public boolean onCommand(CommandSender s, Command c, String l, String[] a) { s.sendMessage("§6§lElementSMP\n§fSwap -> Ab1\n§fShift+Swap -> Ab2"); return true; } }
