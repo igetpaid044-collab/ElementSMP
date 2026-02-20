@@ -63,7 +63,6 @@ public class ElementSMP extends JavaPlugin implements Listener {
         }
     }
 
-    // --- SLOT MACHINE ANIMATION ---
     @EventHandler
     public void onReroll(PlayerInteractEvent e) {
         ItemStack item = e.getItem();
@@ -76,10 +75,10 @@ public class ElementSMP extends JavaPlugin implements Listener {
             int ticks = 0;
             @Override
             public void run() {
-                if (ticks < 30) {
+                if (ticks < 25) {
                     String roll = elements.get(new Random().nextInt(elements.size()));
                     p.sendTitle("§7Rolling...", (isChaos ? "§k" : "§f") + roll, 0, 5, 0);
-                    p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_HAT, 1f, 1f + (ticks * 0.04f));
+                    p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_HAT, 1f, 1f + (ticks * 0.05f));
                 } else {
                     String e1 = elements.get(new Random().nextInt(elements.size()));
                     if (isChaos) {
@@ -100,7 +99,6 @@ public class ElementSMP extends JavaPlugin implements Listener {
         }.runTaskTimer(this, 0L, 2L);
     }
 
-    // --- THE OMNI-COMBO SYSTEM ---
     public static void triggerAbility(Player p, int n) {
         ElementSMP inst = (ElementSMP) Bukkit.getPluginManager().getPlugin("ElementSMP");
         String el = inst.getElement(p);
@@ -118,45 +116,36 @@ public class ElementSMP extends JavaPlugin implements Listener {
     }
 
     private static void executeCombo(Player p, String el) {
-        // STEAM (Fire + Water)
         if (el.contains("fire") && el.contains("water")) {
             p.getWorld().spawnParticle(Particle.CLOUD, p.getLocation(), 100, 3, 1, 3, 0.05);
             p.playSound(p.getLocation(), Sound.BLOCK_FIRE_EXTINGUISH, 1f, 1f);
             for (Entity e : p.getNearbyEntities(5, 5, 5)) if (e instanceof LivingEntity t && e != p) { t.damage(4); t.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 60, 2)); }
         }
-        // STORM (Lightning + Water)
         else if (el.contains("lightning") && el.contains("water")) {
             p.getWorld().spawnParticle(Particle.DRIPPING_WATER, p.getLocation(), 100, 2, 2, 2);
             for (Entity e : p.getNearbyEntities(6, 6, 6)) if (e instanceof LivingEntity t && e != p) { p.getWorld().strikeLightning(t.getLocation()); t.damage(2); }
         }
-        // SANDSTORM (Earth + Wind)
         else if (el.contains("earth") && el.contains("wind")) {
-            p.getWorld().spawnParticle(Particle.BLOCK_DUST, p.getLocation(), 200, 4, 2, 4, 0.1, Material.SAND.createBlockData());
+            p.getWorld().spawnParticle(Particle.BLOCK, p.getLocation(), 200, 4, 2, 4, 0.1, Material.SAND.createBlockData());
             for (Entity e : p.getNearbyEntities(7, 7, 7)) if (e instanceof LivingEntity t && e != p) t.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 100, 0));
         }
-        // VOLCANO (Earth + Fire)
         else if (el.contains("earth") && el.contains("fire")) {
             p.getWorld().spawnParticle(Particle.LAVA, p.getLocation(), 50, 1, 1, 1);
             p.getLocation().getBlock().setType(Material.MAGMA_BLOCK);
             for (Entity e : p.getNearbyEntities(5, 5, 5)) if (e instanceof LivingEntity t && e != p) t.setFireTicks(100);
         }
-        // MUD (Earth + Water)
         else if (el.contains("earth") && el.contains("water")) {
             for (Entity e : p.getNearbyEntities(5, 5, 5)) if (e instanceof LivingEntity t && e != p) t.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 200, 5));
         }
-        // BLOOD FREEZE (Blood + Ice)
         else if (el.contains("blood") && el.contains("ice")) {
             for (Entity e : p.getNearbyEntities(6, 6, 6)) if (e instanceof LivingEntity t && e != p) { t.damage(6); t.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 100, 10)); }
         }
-        // BLACK HOLE (Gravity + Void)
         else if (el.contains("gravity") && el.contains("void")) {
             p.getWorld().spawnParticle(Particle.SQUID_INK, p.getLocation(), 300, 1, 1, 1, 0.02);
             for (Entity e : p.getNearbyEntities(12, 12, 12)) if (e instanceof LivingEntity t && e != p) t.setVelocity(p.getLocation().toVector().subtract(t.getLocation().toVector()).normalize().multiply(1.5));
         }
-        // Default Glitch Dash
         else {
             p.setVelocity(p.getLocation().getDirection().multiply(2.5));
-            p.getWorld().spawnParticle(Particle.WITCH, p.getLocation(), 50, 0.5, 0.5, 0.5);
         }
     }
 
@@ -194,7 +183,7 @@ public class ElementSMP extends JavaPlugin implements Listener {
     }
 }
 
-// SUPPORT CLASSES
+// Support Classes
 class TrustHandler implements CommandExecutor {
     public boolean onCommand(CommandSender s, Command c, String l, String[] a) {
         if (!(s instanceof Player p) || a.length == 0) return false;
