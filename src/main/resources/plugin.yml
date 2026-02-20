@@ -4,16 +4,11 @@ main: me.kaloni.ElementSMP
 api-version: '1.21'
 commands:
   ability:
-    description: Trigger your power.
   controls:
-    description: Toggle hotkeys.
   give-reroll:
-    permission: elementsmp.admin
-  give-chaos:
-    permission: elementsmp.admin
   elementsmp:
-    description: Admin element control.
-    permission: elementsmp.admin
-permissions:
-  elementsmp.admin:
-    default: op
+    description: "Usage: /elementsmp set <player> <element>"
+  trust:
+    description: "Trust a player to prevent ability damage."
+  untrust:
+    description: "Remove a player from your trust list."
