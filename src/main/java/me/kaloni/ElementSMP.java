@@ -4,13 +4,8 @@ import org.bukkit.*;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
-import org.bukkit.event.block.Action;
-import org.bukkit.event.player.PlayerInteractEvent;
-import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.ShapedRecipe;
-import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.plugin.java.JavaPlugin;
-import org.bukkit.scheduler.BukkitRunnable;
 import java.util.HashMap;
 import java.util.Random;
 import java.util.UUID;
@@ -25,55 +20,36 @@ public class ElementSMP extends JavaPlugin implements Listener {
         Bukkit.getPluginManager().registerEvents(this, this);
         getCommand("elements").setExecutor(new PowerCommand());
         getCommand("ability").setExecutor(new AbilityCommand());
-        registerRerollRecipe();
-    }
-
-    private void registerRerollRecipe() {
-        ItemStack reroller = new ItemStack(Material.NETHER_STAR);
-        ItemMeta meta = reroller.getItemMeta();
-        meta.setDisplayName("§b§lElement Reroller");
-        reroller.setItemMeta(meta);
-
-        ShapedRecipe recipe = new ShapedRecipe(new NamespacedKey(this, "reroller"), reroller);
-        recipe.shape("NSN", "SWS", "NSN");
-        recipe.setIngredient('N', Material.NETHERITE_INGOT);
-        recipe.setIngredient('W', Material.NETHER_STAR);
-        recipe.setIngredient('S', Material.SKELETON_SKULL);
-        Bukkit.addRecipe(recipe);
+        // ... (reroller recipe code goes here)
     }
 
     @EventHandler
-    public void onReroll(PlayerInteractEvent event) {
-        Player p = event.getPlayer();
-        if (event.getItem() != null && event.getItem().getType() == Material.NETHER_STAR && event.getItem().getItemMeta().getDisplayName().equals("§b§lElement Reroller")) {
-            if (event.getAction() == Action.RIGHT_CLICK_AIR || event.getAction() == Action.RIGHT_CLICK_BLOCK) {
-                event.getItem().setAmount(event.getItem().getAmount() - 1);
-                runCoolReroll(p);
-            }
+    public void onJoin(PlayerJoinEvent event) {
+        Player player = event.getPlayer();
+        
+        // If they don't have an element yet, give them one
+        if (!playerElements.containsKey(player.getUniqueId())) {
+            String randomElement = elements[new Random().nextInt(elements.length)];
+            playerElements.put(player.getUniqueId(), randomElement);
+            
+            // --- NEW: DISPLAY ON JOIN ---
+            
+            // 1. Send big text in the middle of the screen
+            // player.sendTitle(Title, Subtitle, FadeIn, Stay, FadeOut) - Times are in Ticks (20 = 1 sec)
+            player.sendTitle("§6§lELEMENT ASSIGNED", "§fYou are the master of: §e§l" + randomElement, 10, 70, 20);
+            
+            // 2. Play a cool level-up sound
+            player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f);
+            
+            // 3. Send the message in chat as a backup
+            player.sendMessage("§8§m-------------------------------");
+            player.sendMessage("§6§lElementSMP §7> Your element is: §e§l" + randomElement);
+            player.sendMessage("§7Use §b/ability 1 §7to test your powers!");
+            player.sendMessage("§8§m-------------------------------");
+        } else {
+            // If they already have one, just remind them in the subtitle
+            String existing = playerElements.get(player.getUniqueId());
+            player.sendTitle("§6§lWELCOME BACK", "§7Current Element: §e" + existing, 10, 40, 10);
         }
-    }
-
-    private void runCoolReroll(Player p) {
-        new BukkitRunnable() {
-            int ticks = 0;
-            @Override
-            public void run() {
-                if (ticks > 30) {
-                    String finalEl = elements[new Random().nextInt(elements.length)];
-                    playerElements.put(p.getUniqueId(), finalEl);
-                    p.sendTitle("§a§l" + finalEl.toUpperCase(), "§7Power Unlocked", 10, 40, 10);
-                    p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1, 1);
-                    this.cancel();
-                    return;
-                }
-                // Particle Swirl
-                double angle = ticks * 0.5;
-                double x = Math.cos(angle);
-                double z = Math.sin(angle);
-                p.getWorld().spawnParticle(Particle.SOUL_FIRE_FLAME, p.getLocation().add(x, ticks*0.1, z), 5, 0, 0, 0, 0);
-                p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_HAT, 1, 2);
-                ticks++;
-            }
-        }.runTaskTimer(this, 0, 1);
     }
 }
