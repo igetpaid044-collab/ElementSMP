@@ -20,36 +20,47 @@ public class ElementSMP extends JavaPlugin implements Listener {
         Bukkit.getPluginManager().registerEvents(this, this);
         getCommand("elements").setExecutor(new PowerCommand());
         getCommand("ability").setExecutor(new AbilityCommand());
-        // ... (reroller recipe code goes here)
     }
 
     @EventHandler
     public void onJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
-        
-        // If they don't have an element yet, give them one
         if (!playerElements.containsKey(player.getUniqueId())) {
             String randomElement = elements[new Random().nextInt(elements.length)];
             playerElements.put(player.getUniqueId(), randomElement);
             
-            // --- NEW: DISPLAY ON JOIN ---
+            player.sendTitle("§d§lELEMENT AWAKENED", "§fMaster of §5§l" + randomElement, 10, 80, 20);
+            player.playSound(player.getLocation(), Sound.ENTITY_WITHER_SPAWN, 0.5f, 1.5f);
             
-            // 1. Send big text in the middle of the screen
-            // player.sendTitle(Title, Subtitle, FadeIn, Stay, FadeOut) - Times are in Ticks (20 = 1 sec)
-            player.sendTitle("§6§lELEMENT ASSIGNED", "§fYou are the master of: §e§l" + randomElement, 10, 70, 20);
-            
-            // 2. Play a cool level-up sound
-            player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f);
-            
-            // 3. Send the message in chat as a backup
-            player.sendMessage("§8§m-------------------------------");
-            player.sendMessage("§6§lElementSMP §7> Your element is: §e§l" + randomElement);
-            player.sendMessage("§7Use §b/ability 1 §7to test your powers!");
-            player.sendMessage("§8§m-------------------------------");
-        } else {
-            // If they already have one, just remind them in the subtitle
-            String existing = playerElements.get(player.getUniqueId());
-            player.sendTitle("§6§lWELCOME BACK", "§7Current Element: §e" + existing, 10, 40, 10);
+            sendAbilityInfo(player, randomElement);
         }
+    }
+
+    private void sendAbilityInfo(Player p, String element) {
+        p.sendMessage("§8§m-----------------------------------------");
+        p.sendMessage("§d§l" + element.toUpperCase() + " ABILITIES:");
+        
+        switch (element) {
+            case "Void":
+                p.sendMessage("§5[1] Singularity: §fA devastating blast. §c(6 Hearts)");
+                p.sendMessage("§5[2] Abyssal Grip: §fTrap and wither enemies. §c(3 Hearts)");
+                break;
+            case "Fire":
+                p.sendMessage("§e[1] Fireball: §fExplosive strike. §c(4 Hearts)");
+                p.sendMessage("§e[2] Inferno: §fBurn area of effect. §c(2 Hearts)");
+                break;
+            case "Lightning":
+                p.sendMessage("§e[1] Bolt: §fQuick high-voltage strike. §c(4.5 Hearts)");
+                p.sendMessage("§e[2] Discharge: §fStun nearby enemies. §c(1.5 Hearts)");
+                break;
+            case "Magma":
+                p.sendMessage("§e[1] Lava Bomb: §fHeavy impact. §c(4 Hearts)");
+                p.sendMessage("§e[2] Melt: §fSlow and burn enemies. §c(2 Hearts)");
+                break;
+            default:
+                p.sendMessage("§e[1] Primary: §fStandard Power. §c(3 Hearts)");
+                p.sendMessage("§e[2] Secondary: §fUtility Power. §c(1.5 Hearts)");
+        }
+        p.sendMessage("§8§m-----------------------------------------");
     }
 }
