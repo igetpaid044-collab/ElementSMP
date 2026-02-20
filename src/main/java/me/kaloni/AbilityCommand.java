@@ -3,8 +3,8 @@ package me.kaloni;
 import org.bukkit.*;
 import org.bukkit.command.*;
 import org.bukkit.entity.*;
-import org.bukkit.potion.*;
-import org.bukkit.util.Vector;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 
 public class AbilityCommand implements CommandExecutor {
     @Override
@@ -13,35 +13,44 @@ public class AbilityCommand implements CommandExecutor {
         Player p = (Player) sender;
         String e = ElementSMP.playerElements.getOrDefault(p.getUniqueId(), "None");
 
+        if (args.length == 0) return true;
+
         if (args[0].equals("1")) {
-            p.sendMessage("§e§l[!] §7Using Ability 1...");
-            if (e.equals("Fire")) {
-                p.launchProjectile(SmallFireball.class);
-                p.getWorld().spawnParticle(Particle.FLAME, p.getLocation(), 50, 0.5, 0.5, 0.5, 0.1);
-            }
-            if (e.equals("Air")) {
-                p.setVelocity(new Vector(0, 1.2, 0));
-                p.getWorld().spawnParticle(Particle.CLOUD, p.getLocation(), 30, 0.2, 0.2, 0.2, 0.1);
-            }
-            if (e.equals("Shadow")) {
-                p.addPotionEffect(new PotionEffect(PotionEffectType.INVISIBILITY, 200, 0));
-                p.getWorld().spawnParticle(Particle.LARGE_SMOKE, p.getLocation(), 40, 0.3, 1, 0.3, 0.05);
-            }
-        } else if (args[0].equals("2")) {
-            p.sendMessage("§e§l[!] §7Using Ability 2...");
-            if (e.equals("Lightning")) {
-                p.getWorld().strikeLightning(p.getTargetBlock(null, 20).getLocation());
-                p.getWorld().spawnParticle(Particle.ELECTRIC_SPARK, p.getLocation(), 50, 1, 1, 1, 0.5);
-            }
-            if (e.equals("Ice")) {
-                p.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 100, 10));
-                p.getWorld().spawnParticle(Particle.SNOWFLAKE, p.getLocation(), 100, 1, 1, 1, 0.1);
-            }
+            // VOID - MAXIMUM DAMAGE (6 HEARTS)
             if (e.equals("Void")) {
-                p.teleport(p.getLocation().add(0, 5, 0));
-                p.getWorld().spawnParticle(Particle.PORTAL, p.getLocation(), 100, 0.5, 1, 0.5, 0.2);
+                Entity target = getNearestEntity(p, 10);
+                if (target instanceof LivingEntity) {
+                    ((LivingEntity) target).damage(12.0); // 12.0 = 6 Hearts
+                    p.getWorld().spawnParticle(Particle.REVERSE_PORTAL, target.getLocation(), 100, 0.5, 1, 0.5, 0.1);
+                    p.getWorld().playSound(target.getLocation(), Sound.ENTITY_WARDEN_SONIC_BOOM, 1, 1);
+                    p.sendMessage("§5§lVoid §7> Singularity hit for §c6 Hearts!");
+                }
+            }
+            // FIRE - (4 HEARTS)
+            else if (e.equals("Fire")) {
+                Entity target = getNearestEntity(p, 10);
+                if (target instanceof LivingEntity) {
+                    ((LivingEntity) target).damage(8.0); // 8.0 = 4 Hearts
+                    target.setFireTicks(60);
+                    p.getWorld().spawnParticle(Particle.FLAME, target.getLocation(), 50, 0.5, 0.5, 0.5, 0.1);
+                }
+            }
+            // LIGHTNING - (4.5 HEARTS)
+            else if (e.equals("Lightning")) {
+                Entity target = getNearestEntity(p, 10);
+                if (target instanceof LivingEntity) {
+                    ((LivingEntity) target).damage(9.0); // 9.0 = 4.5 Hearts
+                    p.getWorld().strikeLightningEffect(target.getLocation());
+                }
             }
         }
         return true;
+    }
+
+    private Entity getNearestEntity(Player player, int range) {
+        for (Entity e : player.getNearbyEntities(range, range, range)) {
+            if (e instanceof LivingEntity && !e.equals(player)) return e;
+        }
+        return null;
     }
 }
