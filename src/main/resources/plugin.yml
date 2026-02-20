@@ -1,20 +1,12 @@
 name: ElementSMP
-version: 1.6
+version: 2.0
 main: me.kaloni.ElementSMP
 api-version: '1.21'
 commands:
-  ability:
-    description: Use ability 1 or 2.
-  elemental:
-    description: Main command for help and info.
-    aliases: [el]
-  controls:
-    description: Toggle F-key controls.
-  elementsmp:
-    description: Admin element control.
-  trust:
-    description: Trust a player.
-  give-chaos:
-    description: Give chaos star.
-  give-reroll:
-    description: Give reroll star.
+  controls: {description: Toggle offhand controls}
+  trust: {description: Immune a player}
+  untrust: {description: Remove immunity}
+  elemental: {description: Help and Lore}
+  elementsmp: {description: Admin commands}
+  give-reroll: {description: Give Reroll}
+  give-chaos: {description: Give Chaos Reroll}
