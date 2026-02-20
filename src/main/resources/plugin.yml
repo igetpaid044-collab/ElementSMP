@@ -1,29 +1,22 @@
 name: ElementSMP
 version: 1.2
 main: me.kaloni.ElementSMP
-api-version: 1.20
+api-version: '1.20'
 author: Kaloni
-description: A custom Elemental SMP plugin with unique abilities, rerolls, and chaos powers.
+description: Custom Elemental SMP with dual-cooldown Action Bar HUD.
 
 commands:
   ability:
-    description: Use your primary or secondary elemental ability.
+    description: Use ability 1 or 2.
     usage: /ability [1|2]
   controls:
-    description: Toggle the ability to use the 'F' key (Swap Hands) to trigger powers.
-    usage: /controls
+    description: Toggle F-key hotkeys.
   give-reroll:
-    description: Grants the user a standard Elemental Reroll item.
+    description: Get a standard Reroll Star.
     permission: op
   give-chaos:
-    description: Grants the user a Chaos Reroll item (Guaranteed Dual Elements).
+    description: Get a Chaos Reroll Star.
     permission: op
   elementsmp:
-    description: Admin command to set elements or force reroll cutscenes.
-    usage: /elementsmp set <player> <element>
+    description: Admin element setter.
     permission: op
-
-permissions:
-  elementsmp.admin:
-    description: Allows use of all admin-related elemental commands.
-    default: op
