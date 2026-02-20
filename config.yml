@@ -1,1 +1,10 @@
-// Element command code here
+# ElementSMP Configuration
+cooldowns:
+  a1: 12
+  a2: 60
+
+abilities:
+  void:
+    domain-radius: 25
+  ice:
+    freeze-radius: 10
