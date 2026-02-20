@@ -1,19 +1,20 @@
 name: ElementSMP
-version: 1.0
+version: 1.0.8-SOVEREIGNTY
 main: me.kaloni.ElementSMP
 api-version: "1.21"
-description: An advanced 11-element system with passives, abilities, and domains.
+description: Advanced 11-Element framework with Dynamic Boss AI and Domain Logic.
 commands:
   elemental:
-    description: Master command for elements.
-    usage: /elemental <set/help>
-  ability:
-    description: Trigger active ability.
-    usage: /ability <1/2>
+    description: Access elemental help or set a player's element.
+    usage: /elemental [set/help] [player] [element]
   controls:
-    description: Toggle swap-hand hotkeys.
-    usage: /controls
+    description: Information on how to use abilities.
+  spawnarchon:
+    description: Admin command to spawn the Elemental Archon Boss.
+    permission: elementsmp.admin
+  ability:
+    description: Manually trigger ability 1 or 2.
 permissions:
   elementsmp.admin:
-    description: Manage player elements.
+    description: Grants permission to manage elements and bosses.
     default: op
