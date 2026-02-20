@@ -12,6 +12,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.ShapedRecipe;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -60,11 +61,6 @@ public class ElementSMP extends JavaPlugin implements Listener {
             String randomElement = elements[new Random().nextInt(elements.length)];
             playerElements.put(p.getUniqueId(), randomElement);
             p.sendTitle("§d§lELEMENT AWAKENED", "§fMaster of " + getIcon(randomElement) + " §l" + randomElement, 10, 80, 20);
-            p.sendMessage("§8§m-----------------------------------------");
-            p.sendMessage(getIcon(randomElement) + " §l" + randomElement.toUpperCase() + " ABILITIES:");
-            if (randomElement.equals("Void")) p.sendMessage("§5[1] Singularity: §fBlast §c(6 Hearts)");
-            else p.sendMessage("§e[1] Strike: §fPower §c(3 Hearts)");
-            p.sendMessage("§8§m-----------------------------------------");
         }
     }
 
@@ -112,14 +108,18 @@ class AbilityCommand implements CommandExecutor {
         Player p = (Player) sender;
         String e = ElementSMP.playerElements.getOrDefault(p.getUniqueId(), "None");
         String icon = ElementSMP.getIcon(e);
+        
         long timeLeft = ElementSMP.cooldowns.getOrDefault(p.getUniqueId(), 0L) - System.currentTimeMillis();
-
         if (timeLeft > 0) {
             p.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent("§c§l" + icon + " COOLDOWN: " + (timeLeft / 1000) + "s"));
             return true;
         }
 
         if (args.length > 0 && args[0].equals("1")) {
+            // This is the part that now correctly identifies the ability used
+            String abilityName = e.equals("Void") ? "Singularity" : "Elemental Strike";
+            p.sendMessage("§a§l" + icon + " Ability Used: §f" + abilityName);
+            
             for (Entity entity : p.getNearbyEntities(10, 10, 10)) {
                 if (entity instanceof LivingEntity && !entity.equals(p)) {
                     double dmg = e.equals("Void") ? 12.0 : 6.0;
@@ -129,8 +129,26 @@ class AbilityCommand implements CommandExecutor {
                 }
             }
             ElementSMP.cooldowns.put(p.getUniqueId(), System.currentTimeMillis() + 15000);
-            p.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent("§a§l" + icon + " ABILITY USED!"));
+            p.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent("§a§l" + icon + " " + abilityName.toUpperCase() + " ACTIVATED!"));
         }
+        return true;
+    }
+}
+
+class PowerCommand implements CommandExecutor {
+    @Override
+    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (!(sender instanceof Player)) return true;
+        Player player = (Player) sender;
+        Inventory inv = Bukkit.createInventory(null, 18, "§8Element Info");
+        String current = ElementSMP.playerElements.getOrDefault(player.getUniqueId(), "None");
+        ItemStack info = new ItemStack(Material.PAPER);
+        ItemMeta meta = info.getItemMeta();
+        meta.setDisplayName("§eCurrent: §l" + current);
+        meta.setLore(Arrays.asList("§7Icon: " + ElementSMP.getIcon(current), "§7Use /ability 1 to attack."));
+        info.setItemMeta(meta);
+        inv.setItem(4, info);
+        player.openInventory(inv);
         return true;
     }
 }
