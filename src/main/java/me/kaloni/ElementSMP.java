@@ -3,12 +3,10 @@ package me.kaloni;
 import net.md_5.bungee.api.ChatMessageType;
 import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.*;
-import org.bukkit.block.Block;
 import org.bukkit.command.*;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.*;
 import org.bukkit.event.*;
-import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.player.*;
 import org.bukkit.inventory.*;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -21,161 +19,219 @@ import java.util.*;
 
 public class ElementSMP extends JavaPlugin implements Listener {
 
-    // Data Storage
+    private static ElementSMP instance;
+    public static ElementSMP getInstance() { return instance; }
+
+    // Maps for Storage
     public static HashMap<UUID, String> playerElements = new HashMap<>();
+    public static HashMap<UUID, String> secondaryElements = new HashMap<>();
     public static HashMap<UUID, Boolean> useHotkeys = new HashMap<>();
-    public static HashMap<UUID, Long> cdAbility1 = new HashMap<>();
-    public static HashMap<UUID, Long> cdAbility2 = new HashMap<>();
+    public static HashMap<UUID, Long> cd1 = new HashMap<>();
+    public static HashMap<UUID, Long> cd2 = new HashMap<>();
     
-    private final List<String> elementList = Arrays.asList("Wind", "Fire", "Water", "Earth", "Lightning", "Void", "Ice", "Nature", "Blood", "Ocean", "Psychic", "Gravity");
+    private final List<String> elementList = Arrays.asList("Wind", "Fire", "Water", "Earth", "Lightning", "Void", "Ice", "Nature", "Blood", "Gravity");
 
     @Override
     public void onEnable() {
+        instance = this;
         Bukkit.getPluginManager().registerEvents(this, this);
         
-        // Command Registration
         getCommand("ability").setExecutor(new AbilityHandler());
         getCommand("controls").setExecutor(new ControlToggle());
         getCommand("give-reroll").setExecutor(new AdminItemCommand());
         getCommand("give-chaos").setExecutor(new AdminItemCommand());
-        
-        AdminElementHandler adminHandler = new AdminElementHandler(this);
-        getCommand("elementsmp").setExecutor(adminHandler);
-        getCommand("elementsmp").setTabCompleter(adminHandler);
+        getCommand("elementsmp").setExecutor(new AdminElementHandler());
 
-        // Core Loop: HUD, Particles, and Passives (Runs every 2 ticks)
+        // Master Loop: Passives, Particles, HUD
         new BukkitRunnable() {
-            double angle = 0;
             @Override
             public void run() {
-                angle += 0.15;
                 for (Player p : Bukkit.getOnlinePlayers()) {
                     updateActionBarHUD(p);
-                    spawnElementalHalo(p, angle);
                     applyPassives(p);
+                    if (secondaryElements.containsKey(p.getUniqueId())) {
+                        p.getWorld().spawnParticle(Particle.WITCH, p.getLocation().add(0, 1, 0), 2, 0.3, 0.5, 0.3, 0.01);
+                    }
                 }
             }
-        }.runTaskTimer(this, 0L, 2L);
-    }
-
-    // --- ACTION BAR HUD LOGIC ---
-    private void updateActionBarHUD(Player p) {
-        UUID id = p.getUniqueId();
-        String el = playerElements.getOrDefault(id, "Wind");
-        
-        String ab1Name = getAbilityName(el, 1);
-        String ab1Status = getCooldownStatus(id, cdAbility1);
-        
-        String ab2Name = getAbilityName(el, 2);
-        String ab2Status = getCooldownStatus(id, cdAbility2);
-
-        // Format: ELEMENT | Ability 1: MM:SS | Ability 2: MM:SS
-        String message = String.format("§b§l%s §8| §e%s: %s §8| §6%s: %s", 
-                            el.toUpperCase(), ab1Name, ab1Status, ab2Name, ab2Status);
-        
-        p.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(message));
-    }
-
-    private String getCooldownStatus(UUID id, HashMap<UUID, Long> map) {
-        long time = map.getOrDefault(id, 0L) - System.currentTimeMillis();
-        if (time <= 0) return "§a§lREADY";
-        
-        long totalSecs = time / 1000;
-        long mins = totalSecs / 60;
-        long secs = totalSecs % 60;
-        return String.format("§c%02d:%02d", mins, secs);
-    }
-
-    private String getAbilityName(String el, int slot) {
-        return switch (el.toLowerCase()) {
-            case "nature" -> (slot == 1) ? "Grapple" : "Overgrowth";
-            case "gravity" -> (slot == 1) ? "Zero-G" : "Meteor";
-            case "blood" -> (slot == 1) ? "Siphon" : "Rage";
-            default -> "Power " + slot;
-        };
-    }
-
-    // --- ABILITY LOGIC ---
-    public static void triggerAbility(Player p, int num) {
-        UUID id = p.getUniqueId();
-        String el = playerElements.getOrDefault(id, "Wind").toLowerCase();
-        HashMap<UUID, Long> cdMap = (num == 1) ? cdAbility1 : cdAbility2;
-
-        if (cdMap.getOrDefault(id, 0L) > System.currentTimeMillis()) {
-            p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 1f, 1f);
-            return;
-        }
-
-        boolean success = false;
-        if (num == 1) {
-            if (el.equals("nature")) { performNatureGrapple(p); success = true; cdMap.put(id, System.currentTimeMillis() + 15000); }
-            // Add other Element 1s here
-        } else {
-            if (el.equals("gravity")) { performGravityMeteor(p); success = true; cdMap.put(id, System.currentTimeMillis() + 60000); }
-            // Add other Element 2s here
-        }
-
-        if (success) p.playSound(p.getLocation(), Sound.ENTITY_ILLUSIONER_CAST_SPELL, 1f, 1f);
-    }
-
-    private static void performNatureGrapple(Player p) {
-        RayTraceResult result = p.getWorld().rayTraceBlocks(p.getEyeLocation(), p.getEyeLocation().getDirection(), 30);
-        if (result != null && result.getHitBlock() != null) {
-            Location hit = result.getHitPosition().toLocation(p.getWorld());
-            Vector dir = hit.toVector().subtract(p.getEyeLocation().toVector()).normalize();
-            p.setVelocity(dir.multiply(2.2).setY(0.6));
-            p.getWorld().spawnParticle(Particle.HAPPY_VILLAGER, hit, 20, 0.5, 0.5, 0.5, 0.1);
-        }
-    }
-
-    private static void performGravityMeteor(Player p) {
-        p.sendMessage("§7The sky darkens...");
-        // Placeholder for Meteor logic
+        }.runTaskTimer(this, 0L, 5L);
     }
 
     // --- REROLL SYSTEM ---
-    @EventHandler
-    public void onReroll(PlayerInteractEvent e) {
-        ItemStack item = e.getItem();
-        if (item != null && item.getType() == Material.NETHER_STAR && item.hasItemMeta()) {
-            e.setCancelled(true);
-            boolean isChaos = item.getItemMeta().getDisplayName().contains("CHAOS");
-            startRerollAnimation(e.getPlayer());
-            item.setAmount(item.getAmount() - 1);
-        }
-    }
-
-    public void startRerollAnimation(Player p) {
+    public void startRerollAnimation(Player p, boolean isChaos) {
         new BukkitRunnable() {
             int ticks = 0;
+            final Random rand = new Random();
             @Override public void run() {
-                if (ticks >= 30) {
-                    String finalEl = elementList.get(new Random().nextInt(elementList.size()));
-                    playerElements.put(p.getUniqueId(), finalEl);
-                    p.sendTitle("§6§lNEW ELEMENT", "§f" + finalEl, 10, 40, 10);
-                    p.playSound(p.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f);
-                    this.cancel(); return;
+                if (ticks < 30) {
+                    String rolling = elementList.get(rand.nextInt(elementList.size()));
+                    p.sendTitle("§7§l> §f§l" + rolling.toUpperCase() + " §7§l<", "§8Searching DNA...", 0, 5, 0);
+                    p.playSound(p.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f + (ticks * 0.03f));
+                } 
+                else if (ticks == 30 && isChaos) {
+                    p.sendTitle("§5§kXXXXXX", "§d§lERR: NULL_POINTER", 0, 20, 5);
+                    p.getWorld().strikeLightningEffect(p.getLocation());
+                    p.playSound(p.getLocation(), Sound.ENTITY_ENDER_DRAGON_GROWL, 0.6f, 2f);
                 }
-                p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BIT, 1f, 1f + (ticks * 0.05f));
+                else if (ticks == 45) {
+                    String el1 = elementList.get(rand.nextInt(elementList.size()));
+                    playerElements.put(p.getUniqueId(), el1);
+                    if (isChaos) {
+                        String el2 = elementList.get(rand.nextInt(elementList.size()));
+                        secondaryElements.put(p.getUniqueId(), el2);
+                        p.sendTitle("§d§l" + el1 + " §f& §d§l" + el2, "§5§k|| §fCHAOS AWAKENED §5§k||", 10, 60, 10);
+                    } else {
+                        secondaryElements.remove(p.getUniqueId());
+                        p.sendTitle("§a§l" + el1.toUpperCase(), "§7Affinity Formed.", 10, 40, 10);
+                    }
+                    p.playSound(p.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f);
+                    this.cancel();
+                }
                 ticks++;
             }
         }.runTaskTimer(this, 0L, 2L);
     }
 
-    // --- UTILS & PASSIVES ---
+    // --- ABILITIES REGISTRY ---
+    public static void triggerAbility(Player p, int num) {
+        UUID id = p.getUniqueId();
+        String el = playerElements.getOrDefault(id, "Wind").toLowerCase();
+        HashMap<UUID, Long> cdMap = (num == 1) ? cd1 : cd2;
+
+        if (cdMap.getOrDefault(id, 0L) > System.currentTimeMillis()) {
+            p.sendMessage("§cCooldown: " + (cdMap.get(id) - System.currentTimeMillis())/1000 + "s");
+            return;
+        }
+
+        boolean success = false;
+        if (num == 1) { // Primary Abilities
+            success = switch (el) {
+                case "nature" -> performNatureGrapple(p);
+                case "void" -> performVoidWarp(p);
+                case "fire" -> performFireBurst(p);
+                case "lightning" -> performLightningDash(p);
+                default -> false;
+            };
+        } else { // Ultimate Abilities
+            success = switch (el) {
+                case "ice" -> performAbsoluteZero(p);
+                case "gravity" -> performGravityLift(p);
+                default -> false;
+            };
+        }
+
+        if (success) {
+            cdMap.put(id, System.currentTimeMillis() + (num == 1 ? 15000 : 45000));
+            p.playSound(p.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1f, 1f);
+        }
+    }
+
+    // --- ABILITY LOGIC ---
+    private static boolean performNatureGrapple(Player p) {
+        RayTraceResult res = p.getWorld().rayTraceBlocks(p.getEyeLocation(), p.getEyeLocation().getDirection(), 25);
+        if (res == null || res.getHitBlock() == null) return false;
+        Location hit = res.getHitPosition().toLocation(p.getWorld());
+        Vector dir = hit.toVector().subtract(p.getEyeLocation().toVector()).normalize();
+
+        new BukkitRunnable() {
+            int i = 0;
+            @Override public void run() {
+                if (i > 15 || p.getLocation().distance(hit) < 1.5) { this.cancel(); return; }
+                p.getWorld().spawnParticle(Particle.BLOCK, p.getLocation(), 15, 0.2, 0.2, 0.2, Material.MOSS_BLOCK.createBlockData());
+                p.getWorld().spawnParticle(Particle.HAPPY_VILLAGER, p.getLocation(), 5, 0.4, 0.4, 0.4, 0);
+                i++;
+            }
+        }.runTaskTimer(getInstance(), 0L, 1L);
+        p.setVelocity(dir.multiply(2.1).setY(0.5));
+        return true;
+    }
+
+    private static boolean performAbsoluteZero(Player p) {
+        p.sendMessage("§b§lABSOLUTE ZERO");
+        for (double i = 0; i < 2 * Math.PI; i += 0.2) {
+            double x = Math.cos(i) * 10; double z = Math.sin(i) * 10;
+            p.getWorld().spawnParticle(Particle.SNOWFLAKE, p.getLocation().add(x, 0.1, z), 5, 0.1, 0.1, 0.1, 0);
+        }
+        for (Entity e : p.getNearbyEntities(10, 5, 10)) {
+            if (e instanceof Player t && t != p) {
+                t.addPotionEffect(new PotionEffect(PotionEffectType.SLOW, 100, 255, false, false));
+                t.addPotionEffect(new PotionEffect(PotionEffectType.JUMP, 100, 200, false, false));
+                t.getWorld().spawnParticle(Particle.BLOCK, t.getLocation().add(0, 1, 0), 30, 0.5, 0.5, 0.5, Material.ICE.createBlockData());
+            }
+        }
+        return true;
+    }
+
+    private static boolean performVoidWarp(Player p) {
+        Location loc = p.getEyeLocation().add(p.getLocation().getDirection().multiply(8));
+        p.getWorld().spawnParticle(Particle.PORTAL, p.getLocation(), 50, 0.5, 1, 0.5, 0.1);
+        p.teleport(loc);
+        p.playSound(loc, Sound.ENTITY_ENDERMAN_TELEPORT, 1f, 1f);
+        return true;
+    }
+
+    private static boolean performFireBurst(Player p) {
+        p.setVelocity(new Vector(0, 1.2, 0));
+        p.getWorld().spawnParticle(Particle.FLAME, p.getLocation(), 100, 1, 1, 1, 0.1);
+        p.getWorld().spawnParticle(Particle.EXPLOSION, p.getLocation(), 2, 0, 0, 0, 0);
+        for (Entity e : p.getNearbyEntities(5, 5, 5)) { if (e instanceof LivingEntity le && e != p) le.setFireTicks(100); }
+        return true;
+    }
+
+    private static boolean performLightningDash(Player p) {
+        p.setVelocity(p.getLocation().getDirection().multiply(3).setY(0.2));
+        p.getWorld().spawnParticle(Particle.ELECTRIC_SPARK, p.getLocation(), 50, 0.5, 0.5, 0.5, 0.2);
+        return true;
+    }
+
+    private static boolean performGravityLift(Player p) {
+        for (Entity e : p.getNearbyEntities(8, 8, 8)) {
+            if (e instanceof LivingEntity le) {
+                le.setVelocity(new Vector(0, 1.5, 0));
+                le.addPotionEffect(new PotionEffect(PotionEffectType.SLOW_FALLING, 100, 0));
+            }
+        }
+        return true;
+    }
+
+    // --- HUD ---
+    private void updateActionBarHUD(Player p) {
+        UUID id = p.getUniqueId();
+        String el = playerElements.getOrDefault(id, "Wind").toUpperCase();
+        if (secondaryElements.containsKey(id)) el = "§5§k|§d " + el + "/" + secondaryElements.get(id).toUpperCase() + " §5§k|";
+        
+        long c1 = (cd1.getOrDefault(id, 0L) - System.currentTimeMillis()) / 1000;
+        long c2 = (cd2.getOrDefault(id, 0L) - System.currentTimeMillis()) / 1000;
+        
+        String msg = String.format("§b§l%s §8| §eA1: %s §8| §6A2: %s", el, (c1<=0?"§aREADY":"§c"+c1+"s"), (c2<=0?"§aREADY":"§c"+c2+"s"));
+        p.spigot().sendMessage(ChatMessageType.ACTION_BAR, new TextComponent(msg));
+    }
+
     private void applyPassives(Player p) {
-        String el = playerElements.getOrDefault(p.getUniqueId(), "Wind").toLowerCase();
-        if (el.equals("gravity")) p.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 45, 0, false, false));
+        applyEff(p, playerElements.getOrDefault(p.getUniqueId(), "Wind"));
+        if (secondaryElements.containsKey(p.getUniqueId())) applyEff(p, secondaryElements.get(p.getUniqueId()));
     }
 
-    private void spawnElementalHalo(Player p, double angle) {
-        Location loc = p.getLocation().add(0, 2.1, 0);
-        loc.add(Math.cos(angle) * 0.7, 0, Math.sin(angle) * 0.7);
-        p.getWorld().spawnParticle(Particle.DUST, loc, 1, new Particle.DustOptions(Color.AQUA, 1f));
+    private void applyEff(Player p, String el) {
+        switch (el.toLowerCase()) {
+            case "lightning" -> p.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 100, 1, false, false));
+            case "gravity" -> p.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 100, 0, false, false));
+            case "blood" -> p.addPotionEffect(new PotionEffect(PotionEffectType.STRENGTH, 100, 0, false, false));
+            case "nature" -> p.addPotionEffect(new PotionEffect(PotionEffectType.REGENERATION, 100, 0, false, false));
+        }
     }
 
-    @EventHandler
-    public void onFKey(PlayerSwapHandItemsEvent e) { 
+    @EventHandler public void onReroll(PlayerInteractEvent e) {
+        ItemStack item = e.getItem();
+        if (item != null && item.getType() == Material.NETHER_STAR && item.hasItemMeta()) {
+            e.setCancelled(true);
+            boolean chaos = ChatColor.stripColor(item.getItemMeta().getDisplayName()).toLowerCase().contains("chaos");
+            startRerollAnimation(e.getPlayer(), chaos);
+            item.setAmount(item.getAmount() - 1);
+        }
+    }
+
+    @EventHandler public void onSwap(PlayerSwapHandItemsEvent e) {
         if (useHotkeys.getOrDefault(e.getPlayer().getUniqueId(), false)) {
             e.setCancelled(true);
             triggerAbility(e.getPlayer(), e.getPlayer().isSneaking() ? 2 : 1);
@@ -183,42 +239,31 @@ public class ElementSMP extends JavaPlugin implements Listener {
     }
 }
 
-// --- COMMAND CLASSES ---
+// --- COMMAND HANDLERS ---
 class AdminItemCommand implements CommandExecutor {
     @Override public boolean onCommand(CommandSender s, Command c, String l, String[] a) {
         if (!(s instanceof Player p) || !s.isOp()) return true;
         ItemStack star = new ItemStack(Material.NETHER_STAR);
         ItemMeta m = star.getItemMeta();
         if (c.getName().contains("chaos")) {
-            m.setDisplayName("§5§l« §d§lCHAOS REROLL §5§l»");
-            m.setCustomModelData(1001);
+            m.setDisplayName("§5§lChaos Reroll");
+            m.addEnchant(Enchantment.LUCK, 1, true);
+            m.setCustomModelData(1001); // ItemsAdder Icon 1
         } else {
-            m.setDisplayName("§b§l« §3§lELEMENTAL REROLL §b§l»");
-            m.setCustomModelData(1000);
+            m.setDisplayName("§b§lElemental Reroll");
+            m.setCustomModelData(1000); // ItemsAdder Icon 2
         }
         star.setItemMeta(m); p.getInventory().addItem(star); return true;
     }
 }
-
-class AdminElementHandler implements CommandExecutor, TabCompleter {
-    private final ElementSMP plugin;
-    public AdminElementHandler(ElementSMP plugin) { this.plugin = plugin; }
+class AdminElementHandler implements CommandExecutor {
     @Override public boolean onCommand(CommandSender s, Command c, String l, String[] args) {
-        if (s.isOp() && args.length >= 2 && args[0].equalsIgnoreCase("set")) {
-            Player t = (args.length == 3) ? Bukkit.getPlayer(args[1]) : (s instanceof Player ? (Player)s : null);
-            if (t != null) {
-                ElementSMP.playerElements.put(t.getUniqueId(), args[args.length - 1]);
-                s.sendMessage("§aElement set for " + t.getName());
-            }
+        if (s.isOp() && args.length >= 2) {
+            Player t = Bukkit.getPlayer(args[1]);
+            if (t != null) { ElementSMP.playerElements.put(t.getUniqueId(), args[2]); s.sendMessage("§aUpdated."); }
         }
         return true;
     }
-    @Override public List<String> onTabComplete(CommandSender s, Command cmd, String a, String[] args) {
-        if (args.length == 1) return List.of("set");
-        if (args.length == 3) return Arrays.asList("Nature", "Gravity", "Fire", "Ice", "Blood");
-        return null;
-    }
 }
-
 class AbilityHandler implements CommandExecutor { public boolean onCommand(CommandSender s, Command c, String l, String[] a) { if (s instanceof Player p) ElementSMP.triggerAbility(p, (a.length > 0 && a[0].equals("2")) ? 2 : 1); return true; } }
-class ControlToggle implements CommandExecutor { public boolean onCommand(CommandSender s, Command c, String l, String[] a) { if (s instanceof Player p) { ElementSMP.useHotkeys.put(p.getUniqueId(), !ElementSMP.useHotkeys.getOrDefault(p.getUniqueId(), false)); p.sendMessage("§bHotkeys: " + (ElementSMP.useHotkeys.get(p.getUniqueId()) ? "§aON" : "§cOFF")); } return true; } }
+class ControlToggle implements CommandExecutor { public boolean onCommand(CommandSender s, Command c, String l, String[] a) { if (s instanceof Player p) { ElementSMP.useHotkeys.put(p.getUniqueId(), !ElementSMP.useHotkeys.getOrDefault(p.getUniqueId(), false)); p.sendMessage("§bHotkeys Toggled."); } return true; } }
