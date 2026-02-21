@@ -2,7 +2,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>me.kaloni</groupId>
     <artifactId>ElementSMP</artifactId>
-    <version>1.0.8-SOVEREIGNTY</version>
+    <version>1.0.8-SOVEREIGN</version>
     <properties>
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
